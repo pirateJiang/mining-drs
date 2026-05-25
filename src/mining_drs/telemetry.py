@@ -38,11 +38,14 @@ class Telemetry:
         """
         return self.history
 
+    # TODO: do we still need this?
     def record_custom(self, key: str, value: any):
         """
         Records a custom key-value pair to the most recent snapshot in the history.
         Raises an error if no snapshot has been taken yet.
         """
         if not self.history:
-            raise IndexError("Cannot record custom data: No snapshots have been taken yet.")
+            raise IndexError(
+                "Cannot record custom data: No snapshots have been taken yet."
+            )
         self.history[-1][key] = value

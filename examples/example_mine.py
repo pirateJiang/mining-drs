@@ -17,7 +17,6 @@ class MineMode(Enum):
     SHUTDOWN = "Shutdown"
 
 
-# TODO: should we/can we enforce this seperation between "controller" and not controller? what about doing the geo statistics and integrating that nicely/seperating that like navarra mentioned?
 class MinePlant(drs.Module):
     def __init__(self, config: MiningDRSConfig):
         super().__init__()
@@ -50,29 +49,24 @@ class MinePlant(drs.Module):
     def _generate_next_parcel(self):
         c = self.config
         self.ore_extracted_from_current_parcel.value = 0.0
-        self.mass_of_current_parcel = __import__("random").uniform(
-            c.min_ore_mass, c.max_ore_mass
-        )
+        self.mass_of_current_parcel = random.uniform(c.min_ore_mass, c.max_ore_mass)
 
         if self.next_parcel_is_new_facies:
             if c.std_dev_new_facies != 0:
-                val = __import__("random").gauss(
-                    c.mean_grade_new_facies, c.std_dev_new_facies
-                )
+                val = random.gauss(c.mean_grade_new_facies, c.std_dev_new_facies)
             else:
                 val = c.mean_grade_new_facies
             self.percentage_of_ore2 = max(val, 0.0)
         else:
-            val = self.percentage_of_ore2 + c.variation_same_facies * __import__(
-                "random"
-            ).uniform(-1, 1)
+            val = self.percentage_of_ore2 + c.variation_same_facies * random.uniform(
+                -1, 1
+            )
             self.percentage_of_ore2 = max(val, 0.0)
 
-        self.next_parcel_is_new_facies = (
-            __import__("random").random() <= c.prob_new_facies
-        )
+        self.next_parcel_is_new_facies = random.random() <= c.prob_new_facies
 
-    def update_rates(self):
+    def update_rates(self, mode: MineMode):
+        c = self.config
         # Apply Global / Shared Rules for plant
         if (
             self.ore_extraction.value
@@ -88,12 +82,74 @@ class MinePlant(drs.Module):
             self.mass_of_current_parcel
         )
 
+        p = self.percentage_of_ore2
+
+        # Apply mode-specific rates
+        if mode == MineMode.MODE_A:
+            r = c.mode_a_ore1_milling_rate + c.mode_a_ore2_milling_rate
+            self.ore_extraction.rate = r
+            self.ore_extracted_from_current_parcel.rate = r
+            self.ore_stock.rate = 0.0
+            self.ore1_stock.rate = r * (1 - p / 100) - c.mode_a_ore1_milling_rate
+            self.ore2_stock.rate = r * (p / 100) - c.mode_a_ore2_milling_rate
+            self.ore1_stock.lower_threshold = 0.0
+            self.ore2_stock.lower_threshold = 0.0
+        elif mode == MineMode.MODE_A_CONTINGENCY:
+            r = c.mode_a_contingency_ore1_milling_rate
+            self.ore_extraction.rate = r
+            self.ore_extracted_from_current_parcel.rate = r
+            self.ore_stock.rate = 0.0
+            self.ore1_stock.rate = r * (1 - p / 100) - r
+            self.ore2_stock.rate = r * (p / 100)
+            self.ore1_stock.lower_threshold = 0.0
+        elif mode == MineMode.MODE_A_MINE_SURGING:
+            r = c.mode_a_ore1_milling_rate * 100 / (100 - p)
+            self.ore_extraction.rate = r
+            self.ore_extracted_from_current_parcel.rate = r
+            self.ore_stock.rate = (
+                r - c.mode_a_ore1_milling_rate - c.mode_a_ore2_milling_rate
+            )
+            self.ore1_stock.rate = 0.0
+            self.ore2_stock.rate = r * (p / 100) - c.mode_a_ore2_milling_rate
+            self.ore_stock.lower_threshold = c.target_ore_stock_level
+            self.ore2_stock.lower_threshold = 0.0
+        elif mode == MineMode.MODE_B:
+            r = c.mode_b_ore1_milling_rate + c.mode_b_ore2_milling_rate
+            self.ore_extraction.rate = r
+            self.ore_extracted_from_current_parcel.rate = r
+            self.ore_stock.rate = 0.0
+            self.ore1_stock.rate = r * (100 - p) / 100 - c.mode_b_ore1_milling_rate
+            self.ore2_stock.rate = r * (p / 100) - c.mode_b_ore2_milling_rate
+            self.ore1_stock.lower_threshold = 0.0
+            self.ore2_stock.lower_threshold = 0.0
+        elif mode == MineMode.MODE_B_CONTINGENCY:
+            r = c.mode_b_contingency_ore2_milling_rate
+            self.ore_extraction.rate = r
+            self.ore_extracted_from_current_parcel.rate = r
+            self.ore_stock.rate = 0.0
+            self.ore1_stock.rate = r * (100 - p) / 100
+            self.ore2_stock.rate = r * (p / 100) - r
+            self.ore2_stock.lower_threshold = 0.0
+        elif mode == MineMode.MODE_B_MINE_SURGING:
+            r = c.mode_b_ore2_milling_rate * 100 / p
+            self.ore_extraction.rate = r
+            self.ore_extracted_from_current_parcel.rate = r
+            self.ore_stock.rate = (
+                r - c.mode_b_ore1_milling_rate - c.mode_b_ore2_milling_rate
+            )
+            self.ore1_stock.rate = r * (100 - p) / 100 - c.mode_b_ore1_milling_rate
+            self.ore2_stock.rate = 0.0
+            self.ore_stock.lower_threshold = c.target_ore_stock_level
+            self.ore1_stock.lower_threshold = 0.0
+        elif mode == MineMode.SHUTDOWN:
+            pass
+
 
 class MineController(drs.Module):
     def __init__(self, config: MiningDRSConfig, plant: MinePlant):
         super().__init__()
         self.config = config
-        self.__dict__["plant"] = plant
+        self.plant = plant
 
         self.current_mode = drs.State("current_mode", MineMode.MODE_A)
 
@@ -120,126 +176,16 @@ class MineController(drs.Module):
         )
         self.time_shutdown = drs.Timer("TimeInShutdown_Level", initial_value=0.0)
 
+        # TODO: do all DRS modules/models have registries? can we have a default one and it always calls _setup_registry() or something? like is there a way to do this where it doesnt need to be put every time?
         self.registry = StateMachine()
         self._setup_registry()
 
         self.current_mode.value = MineMode.MODE_A
 
+    # TODO: should this be required?
     def _setup_registry(self):
         c = self.config
         plant = self.plant
-
-        # ----------------------------------------------------
-        # RATE ASSIGNMENT SEQUENCES (Command Pattern)
-        # ----------------------------------------------------
-        def rate_seq_mode_a():
-            r = c.mode_a_ore1_milling_rate + c.mode_a_ore2_milling_rate
-            p = plant.percentage_of_ore2
-            plant.ore_extraction.rate = r
-            plant.ore_extracted_from_current_parcel.rate = r
-            plant.ore_stock.rate = 0.0
-            plant.ore1_stock.rate = r * (1 - p / 100) - c.mode_a_ore1_milling_rate
-            plant.ore2_stock.rate = r * (p / 100) - c.mode_a_ore2_milling_rate
-            self.time_mode_a.rate = 1.0
-
-            # Bounds
-            plant.ore1_stock.lower_threshold = 0.0
-            plant.ore2_stock.lower_threshold = 0.0
-
-        def rate_seq_mode_a_contingency():
-            r = c.mode_a_contingency_ore1_milling_rate
-            p = plant.percentage_of_ore2
-            plant.ore_extraction.rate = r
-            plant.ore_extracted_from_current_parcel.rate = r
-            plant.ore_stock.rate = 0.0
-            plant.ore1_stock.rate = r * (1 - p / 100) - r
-            plant.ore2_stock.rate = r * (p / 100)
-            self.time_mode_a_contingency.rate = 1.0
-            self.time_executed_contingency.rate = 1.0
-
-            # Bounds
-            plant.ore1_stock.lower_threshold = 0.0
-            self.time_executed_contingency.upper_threshold = (
-                c.duration_of_contingency_segments
-            )
-
-        def rate_seq_mode_a_surging():
-            p = plant.percentage_of_ore2
-            r = c.mode_a_ore1_milling_rate * 100 / (100 - p)
-            plant.ore_extraction.rate = r
-            plant.ore_extracted_from_current_parcel.rate = r
-            plant.ore_stock.rate = (
-                r - c.mode_a_ore1_milling_rate - c.mode_a_ore2_milling_rate
-            )
-            plant.ore1_stock.rate = 0.0
-            plant.ore2_stock.rate = r * (p / 100) - c.mode_a_ore2_milling_rate
-            self.time_mode_a_surging.rate = 1.0
-
-            # Bounds
-            plant.ore_stock.lower_threshold = c.target_ore_stock_level
-            plant.ore2_stock.lower_threshold = (
-                0.0  # NOTE: Added to prevent negative Ore 2 stock
-            )
-
-        def rate_seq_mode_b():
-            r = c.mode_b_ore1_milling_rate + c.mode_b_ore2_milling_rate
-            p = plant.percentage_of_ore2
-            plant.ore_extraction.rate = r
-            plant.ore_extracted_from_current_parcel.rate = r
-            plant.ore_stock.rate = 0.0
-            plant.ore1_stock.rate = r * (100 - p) / 100 - c.mode_b_ore1_milling_rate
-            plant.ore2_stock.rate = r * (p / 100) - c.mode_b_ore2_milling_rate
-            self.time_mode_b.rate = 1.0
-
-            # Bounds
-            plant.ore1_stock.lower_threshold = 0.0
-            plant.ore2_stock.lower_threshold = 0.0
-
-        def rate_seq_mode_b_contingency():
-            r = c.mode_b_contingency_ore2_milling_rate
-            p = plant.percentage_of_ore2
-            plant.ore_extraction.rate = r
-            plant.ore_extracted_from_current_parcel.rate = r
-            plant.ore_stock.rate = 0.0
-            plant.ore1_stock.rate = r * (100 - p) / 100
-            plant.ore2_stock.rate = r * (p / 100) - r
-            self.time_mode_b_contingency.rate = 1.0
-            self.time_executed_contingency.rate = 1.0
-
-            # Bounds
-            plant.ore2_stock.lower_threshold = 0.0
-            self.time_executed_contingency.upper_threshold = (
-                c.duration_of_contingency_segments
-            )
-
-        def rate_seq_mode_b_surging():
-            p = plant.percentage_of_ore2
-            r = c.mode_b_ore2_milling_rate * 100 / p
-            plant.ore_extraction.rate = r
-            plant.ore_extracted_from_current_parcel.rate = r
-            plant.ore_stock.rate = (
-                r - c.mode_b_ore1_milling_rate - c.mode_b_ore2_milling_rate
-            )
-            plant.ore1_stock.rate = r * (100 - p) / 100 - c.mode_b_ore1_milling_rate
-            plant.ore2_stock.rate = 0.0
-            self.time_mode_b_surging.rate = 1.0
-
-            # Bounds
-            plant.ore_stock.lower_threshold = c.target_ore_stock_level
-            plant.ore1_stock.lower_threshold = (
-                0.0  # NOTE: Added to prevent negative Ore 1 stock
-            )
-
-        def rate_seq_shutdown():
-            self.time_shutdown.rate = 1.0
-
-        self.registry.register(MineMode.MODE_A, rate_seq_mode_a)
-        self.registry.register(MineMode.MODE_A_CONTINGENCY, rate_seq_mode_a_contingency)
-        self.registry.register(MineMode.MODE_A_MINE_SURGING, rate_seq_mode_a_surging)
-        self.registry.register(MineMode.MODE_B, rate_seq_mode_b)
-        self.registry.register(MineMode.MODE_B_CONTINGENCY, rate_seq_mode_b_contingency)
-        self.registry.register(MineMode.MODE_B_MINE_SURGING, rate_seq_mode_b_surging)
-        self.registry.register(MineMode.SHUTDOWN, rate_seq_shutdown)
 
         # ----------------------------------------------------
         # TRANSITIONS (Command Pattern for check_transitions)
@@ -390,13 +336,34 @@ class MineController(drs.Module):
         )
 
     def update_rates(self):
-        """The 'forward' pass. Defines how states interact."""
-        # Execute dynamic rate AND threshold rules for current mode
-        self.registry.apply_rates(self.current_mode.value)
+        m = self.current_mode.value
+
+        if m == MineMode.MODE_A:
+            self.time_mode_a.rate = 1.0
+        elif m == MineMode.MODE_A_CONTINGENCY:
+            self.time_mode_a_contingency.rate = 1.0
+            self.time_executed_contingency.rate = 1.0
+            self.time_executed_contingency.upper_threshold = (
+                self.config.duration_of_contingency_segments
+            )
+        elif m == MineMode.MODE_A_MINE_SURGING:
+            self.time_mode_a_surging.rate = 1.0
+        elif m == MineMode.MODE_B:
+            self.time_mode_b.rate = 1.0
+        elif m == MineMode.MODE_B_CONTINGENCY:
+            self.time_mode_b_contingency.rate = 1.0
+            self.time_executed_contingency.rate = 1.0
+            self.time_executed_contingency.upper_threshold = (
+                self.config.duration_of_contingency_segments
+            )
+        elif m == MineMode.MODE_B_MINE_SURGING:
+            self.time_mode_b_surging.rate = 1.0
+        elif m == MineMode.SHUTDOWN:
+            self.time_shutdown.rate = 1.0
 
         self.time_executed_campaign_shutdown.rate = 1.0
 
-        if self.current_mode.value == MineMode.SHUTDOWN:
+        if m == MineMode.SHUTDOWN:
             self.time_executed_campaign_shutdown.upper_threshold = (
                 self.config.duration_of_shutdowns
             )
@@ -404,6 +371,15 @@ class MineController(drs.Module):
             self.time_executed_campaign_shutdown.upper_threshold = (
                 self.config.duration_of_production_campaigns
             )
+
+    def check_transitions(
+        self, trigger_var: drs.Variable = None, is_upper: bool = True
+    ):
+        next_mode = self.registry.get_next_mode(
+            self.current_mode.value, trigger_var, is_upper=is_upper
+        )
+        if next_mode:
+            self.current_mode.value = next_mode
 
 
 class ExampleMineModel(drs.Module):
@@ -417,8 +393,8 @@ class ExampleMineModel(drs.Module):
         self.telemetry = Telemetry(self)
 
     def update_rates(self):
-        self.plant.update_rates()
         self.controller.update_rates()
+        self.plant.update_rates(self.controller.current_mode.value)
 
     def check_transitions(
         self, trigger_var: drs.Variable = None, is_upper: bool = True
@@ -432,7 +408,6 @@ class ExampleMineModel(drs.Module):
 
         return extraction_met and stock_met
 
-    # TODO: thoughts on this idea: Move Printing/Statistics to the Base Class
     def print_statistics(self):
         print("\n--- Output Statistics ---")
 

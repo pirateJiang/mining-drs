@@ -380,6 +380,15 @@ class ExampleMineModel(drs.Module):
                 self.mass_of_current_parcel
             )
 
+    def check_transitions(
+        self, trigger_var: drs.Variable = None, is_upper: bool = True
+    ):
+        next_mode = self.registry.get_next_mode(
+            self.current_mode.value, trigger_var, is_upper=is_upper
+        )
+        if next_mode:
+            self.current_mode.value = next_mode
+
     def is_terminating_condition_met(self) -> bool:
         c = self.config
         extraction_met = self.ore_extraction.value >= c.total_ore_to_extract

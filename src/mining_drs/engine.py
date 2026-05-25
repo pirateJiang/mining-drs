@@ -31,7 +31,7 @@ class DRSEngine:
                 break
 
             # 1. Ask the model to set its current rates based on its state
-            self.model.reset_variables()
+            self.model.zero_rates()
             self.model.update_rates()
 
             # 2. Look at all variables to find the closest threshold

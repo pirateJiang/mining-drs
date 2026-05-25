@@ -3,9 +3,9 @@ from mining_drs.engine import DRSEngine
 
 class MockSimulationEngine(DRSEngine):
     def __init__(self, target_ticks: int):
+        super().__init__()
         self.target_ticks = target_ticks
         self.current_ticks = 0
-        self.time = 0.0
         self.log = []
 
     def initialize_state(self):
@@ -20,7 +20,7 @@ class MockSimulationEngine(DRSEngine):
 
     def advance_time(self, dt: float):
         self.log.append("advance")
-        self.time += dt
+        super().advance_time(dt)
 
     def check_and_trigger_thresholds(self):
         self.log.append("check")
@@ -42,14 +42,14 @@ def test_engine_execution_order():
         "record"
     ]
     assert engine.log == expected_log
-    assert engine.time == 1.0
+    assert engine.current_time == 1.0
 
 
 def test_engine_multiple_ticks():
     engine = MockSimulationEngine(target_ticks=3)
     engine.run()
     
-    assert engine.time == 3.0
+    assert engine.current_time == 3.0
     assert engine.current_ticks == 3
     # Check that init happens exactly once
     assert engine.log.count("init") == 1

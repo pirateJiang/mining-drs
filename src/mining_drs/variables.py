@@ -1,5 +1,6 @@
 class Variable:
     """Base class for all domain variables."""
+
     def __init__(self, name: str, initial_value: float = 0.0):
         self.name = name
         self.value = initial_value
@@ -7,6 +8,7 @@ class Variable:
 
 class Level(Variable):
     """A variable that accumulates over time based on a rate."""
+
     def __init__(self, name: str, initial_value: float = 0.0, rate: float = 0.0):
         super().__init__(name, initial_value)
         self.rate = rate
@@ -18,6 +20,7 @@ class Level(Variable):
 
 class Timer(Level):
     """A specialized level used to track time, typically with a rate of 1.0 or -1.0."""
+
     def __init__(self, name: str, initial_value: float = 0.0, rate: float = 1.0):
         super().__init__(name, initial_value, rate)
 
@@ -28,4 +31,5 @@ class Timer(Level):
 
 class Tracker(Variable):
     """A variable used only for recording output statistics. It does not affect simulation logic."""
+
     pass

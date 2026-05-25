@@ -1,20 +1,6 @@
 import re
 
-# We fallback to standard random/math if numpy isn't available
-# for environments without third-party packages installed yet.
-# TODO: i hate fallbacks remove this.
-try:
-    import numpy as np
-
-    random_uniform = np.random.uniform
-    random_normal = np.random.normal
-    np_available = True
-except ImportError:
-    import random
-
-    random_uniform = random.uniform
-    random_normal = random.gauss
-    np_available = False
+import numpy as np
 
 
 class FormulaParser:
@@ -33,8 +19,8 @@ class FormulaParser:
             "max": max,
             "min": min,
             "abs": abs,
-            "random_uniform": random_uniform,
-            "random_normal": random_normal,
+            "random_uniform": np.random.uniform,
+            "random_normal": np.random.normal,
         }
 
     def parse_expression(self, expression_string: str):
@@ -51,6 +37,9 @@ class FormulaParser:
         clean_str = re.sub(r"\bMX\b", "max", clean_str)
         clean_str = re.sub(r"\bMN\b", "min", clean_str)
         clean_str = re.sub(r"\bABS\b", "abs", clean_str)
+
+        # 3. Handle logic operators
+        clean_str = clean_str.replace("&&", " and ").replace("||", " or ")
 
         # 3. Compile the code once. This throws SyntaxError if the expression is malformed.
         try:

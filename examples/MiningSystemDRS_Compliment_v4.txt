@@ -1,0 +1,838 @@
+Run Setup
+---------
+Reports
+	Prompt me
+ProjectParameters
+	Project Title: MiningSystemDRS_v4_bXX   (enter build number in place of XX)
+Replication Parameters
+	Number of Replications: 1
+	Replication Length: 99999 days
+	Base Time Units: days
+	Termination Condition: Eval(ConfExString_TerminatingCondition)
+
+
+=============================================================================================================
+=============================================================================================================
+=========================================== DRS Framework Construction ======================================
+=============================================================================================================
+=============================================================================================================
+
+
+Model Dimensions and Configuration Expression Strings (in Variable Sheet)
+-----------------------------------------------------
+*** These dimension and configuration strings are essential to the functioning of the framework, however 
+*** their values are set in accordance with the specific model that is to be implemented. 
+dim_NumberOfLevels
+dim_NumberOfTimers
+dim_NumberOfDiscretelyDynamicalNumericalVariables
+dim_NumberOfCategoricalVariables
+dim_NumberOfRateConfigurations
+dim_NumberOfAssignmentSequenceAddresses
+dim_MaxLengthOfAssignmentSequence
+
+
+DRS Functional Variables (in Variable Sheet)
+------------------------
+drs_RateConfigurationNumber
+drs_TimeOfPreviousDRSUpdate
+drs_DurationUntilThresholdCrossing
+drs_ThresholdCrossingLevelOrTimerNumber
+drs_ThresholdIsCrossedByTimer
+drs_DirectionOfThresholdCrossing
+drs_Level
+drs_Timer
+drs_DiscretelyDynamicalNumericalVariable
+drs_CategoricalVariable
+
+
+DRS Functional Variable Dimensions and Type
+-------------------------------------------
+*** The DRS functional values are real scalar variables, with the exception of the following vectors.
+*** Note that the dimensions of these vectors is a model-specific, as per the model dimensions
+14. drs_Level					real 	vector	dim_NumberOfLevels x 1
+15. drs_Timer					real 	vector	dim_NumberOfTimers x 1
+16. drs_DiscretelyDynamicalNumericalVariable	real 	vector	dim_NumberOfDiscretelyDynamicalNumericalVariables x 1
+17. drs_CategoricalVariable			STRING	vector	dim_NumberOfCategoricalVariables x 1
+
+
+Configuration Expression String (in Expression Sheet)
+-------------------------------
+confExString_TerminatingCondition
+confExString_InitialRateConfigurationNumber
+confExString_InitialLevelValue
+confExString_InitialTimerValue
+confExString_InitialDiscretelyDynamicalNumericalVariableValue
+confExString_InitialCategoricalVariableValue
+confExString_LevelRate
+confExString_LowerLevelThreshold
+confExString_UpperLevelThreshold
+confExString_LowerLevelResultantRateConfiguration
+confExString_UpperLevelResultantRateConfiguration
+confExString_LowerLevelAssignmentAddress
+confExString_UpperLevelAssignmentAddress
+confExString_TimerRate
+confExString_LowerTimerThreshold
+confExString_UpperTimerThreshold
+confExString_LowerTimerResultantRateConfiguration
+confExString_UpperTimerResultantRateConfiguration
+confExString_LowerTimerAssignmentAddress
+confExString_UpperTimerAssignmentAddress
+confExString_AssignmentSequence
+
+
+Configuration Expression String Dimensions and Type
+---------------------------------------------------
+*** All of these expression strings are indeed STRINGS, rather than the "native" format type
+*** Note that the dimensions of the vectors and matrices is a model-specific, as per the model dimensions
+1.  confExString_TerminatingCondition					string
+2.  confExString_InitialRateConfigurationNumber				string
+3.  confExString_InitialLevelValue					string	vector	dim_NumberOfLevels x 1 
+4.  confExString_InitialTimerValue					string	vector	dim_NumberOfTimers x 1
+5.  confExString_InitialDiscretelyDynamicalNumericalVariableValue	string	vector	dim_NumberOfDiscretelyDynamicalNumericalVariables x 1
+6.  confExString_InitialCategoricalVariableValue			string	vector	dim_NumberOfCategoricalVariables x 1
+7.  confExString_LevelRate						string	matrix	dim_NumberOfLevels x dim_NumberOfRateConfigurations
+8.  confExString_LowerLevelThreshold					string	matrix	dim_NumberOfLevels x dim_NumberOfRateConfigurations
+9.  confExString_UpperLevelThreshold					string	matrix	dim_NumberOfLevels x dim_NumberOfRateConfigurations
+10. confExString_LowerLevelResultantRateConfiguration			string	matrix	dim_NumberOfLevels x dim_NumberOfRateConfigurations
+11. confExString_UpperLevelResultantRateConfiguration			string	matrix	dim_NumberOfLevels x dim_NumberOfRateConfigurations
+12. confExString_LowerLevelAssignmentAddress				string	matrix	dim_NumberOfLevels x dim_NumberOfRateConfigurations
+13. confExString_UpperLevelAssignmentAddress				string	matrix	dim_NumberOfLevels x dim_NumberOfRateConfigurations
+14. confExString_TimerRate						string	matrix	dim_NumberOfTimers x dim_NumberOfRateConfigurations
+15. confExString_LowerTimerThreshold					string	matrix	dim_NumberOfTimers x dim_NumberOfRateConfigurations
+16. confExString_UpperTimerThreshold					string	matrix	dim_NumberOfTimers x dim_NumberOfRateConfigurations
+17. confExString_LowerTimerResultantRateConfiguration			string	matrix	dim_NumberOfTimers x dim_NumberOfRateConfigurations
+18. confExString_UpperTimerResultantRateConfiguration			string	matrix	dim_NumberOfTimers x dim_NumberOfRateConfigurations
+19. confExString_LowerTimerAssignmentAddress				string	matrix	dim_NumberOfTimers x dim_NumberOfRateConfigurations
+20. confExString_UpperTimerAssignmentAddress				string	matrix	dim_NumberOfTimers x dim_NumberOfRateConfigurations
+21. confExString_AssignmentSequence					string	matrix	dim_MaxLengthOfAssignmentSequence x dim_NumberOfAssignmentSequenceAddresses
+
+
+
+=============================================================================================================
+=============================================================================================================
+========================================== Model Specific Configuration =====================================
+=============================================================================================================
+=============================================================================================================
+**Note this aspect of the implementation can be postponed until after the dynamical implementation
+**Moreover, it implements the two-mode mining system described by Navarra et al. (2019), but this can be
+**replaced with other models, e.g. ones that use the VBA block to make external calls to libraries or 
+**executables.
+
+
+Setting of Model Dimensions (in Variable Sheet)
+---------------------------
+1.  dim_NumberOfLevels					5
+2.  dim_NumberOfTimers					9
+3.  dim_NumberOfDiscretelyDynamicalNumericalVariables	3
+4.  dim_NumberOfCategoricalVariables			1			(To avoid error, since a zero-dimentional vector is not permitted)
+5.  dim_NumberOfRateConfigurations			7
+6.  dim_NumberOfAssignmentSequenceAddresses		6
+7.  dim_MaxLengthOfAssignmentSequence			7
+14. drs_Level						real 	vector	5 x 1
+15. drs_Timer						real 	vector	9 x 1
+16. drs_DiscretelyDynamicalNumericalVariable		real 	vector	3 x 1
+17. drs_CategoricalVariable				string	vector	1 x 1  (To avoid error, since a zero-dimentional vector is not permitted)
+
+
+Setting of Model Dimensions (in Expression Sheet)
+---------------------------
+3.  confExString_InitialLevelValue					string	vector	5 x 1 
+4.  confExString_InitialTimerValue					string	vector	9 x 1
+5.  confExString_InitialDiscretelyDynamicalNumericalVariableValue	string	vector	3 x 1
+6.  confExString_InitialCategoricalVariableValue			string	vector	1 x 1  (To avoid error, since a zero-dimentional vector is not permitted)
+7.  confExString_LevelRate						string	matrix	5 x 7
+8.  confExString_LowerLevelThreshold					string	matrix	5 x 7
+9.  confExString_UpperLevelThreshold					string	matrix	5 x 7
+10. confExString_LowerLevelResultantRateConfiguration			string	matrix	5 x 7
+11. confExString_UpperLevelResultantRateConfiguration			string	matrix	5 x 7
+12. confExString_LowerLevelAssignmentAddress				string	matrix	5 x 7
+13. confExString_UpperLevelAssignmentAddress				string	matrix	5 x 7
+14. confExString_TimerRate						string	matrix	9 x 7
+15. confExString_LowerTimerThreshold					string	matrix	9 x 7
+16. confExString_UpperTimerThreshold					string	matrix	9 x 7
+17. confExString_LowerTimerResultantRateConfiguration			string	matrix	9 x 7
+18. confExString_UpperTimerResultantRateConfiguration			string	matrix	9 x 7
+19. confExString_LowerTimerAssignmentAddress				string	matrix	9 x 7
+20. confExString_UpperTimerAssignmentAddress				string	matrix	9 x 7
+21. confExString_AssignmentSequence					string	matrix	6 x 7
+
+
+Parameters and Control Variables (in Variable Sheet)
+--------------------------------
+parameter_OreToBeExtractedDuringWarmingPeriod
+parameter_TotalOreToBeExtracted
+parameter_DurationOfProductionCampaigns
+parameter_DurationOfShutdowns
+parameter_ModeAOre1MillingRate
+parameter_ModeAOre2MillingRate
+parameter_ModeAContingencyOre1MillingRate
+parameter_ModeBOre1MillingRate
+parameter_ModeBOre2MillingRate
+parameter_ModeBContingencyOre2MillingRate
+parameterVector_GeostatisticalModelParameters
+controlVariable_CriticalOre2Level
+controlVariable_TargetOreStockLevel
+controlVariable_DurationOfContingencySegments
+
+
+Parameter and Control Variables Dimensions and Type
+---------------------------------------------------
+**The model parameters and control variables are real scalars unless otherwise specified
+28. parameterVector_GeostatisticalModelParameters 		real vector 6 x 1 
+
+
+Setting of Parameters and Control Variables
+-------------------------------------------
+18. parameter_OreToBeExtractedDuringWarmingPeriod		600000  (~100 days of production)
+19. parameter_TotalOreToBeExtracted				6600000 (~1100 days of production)
+20. parameter_DurationOfProductionCampaigns			34 days (5 weeks between shutdowns)
+21. parameter_DurationOfShutdowns				1 day
+22. parameter_ModeAOre1MillingRate				3600 t/day (Makes expected net increase of 600 t/day)
+23. parameter_ModeAOre2MillingRate				2400 t/day (Makes expected net decrease of 600 t/day)
+24. parameter_ModeAContingencyOre1MillingRate			3900 t/day (Decreases throughput by 35% for lack of Ore2)
+25. parameter_ModeBOre1MillingRate				4600 t/day (Makes expected net decrease of 820 t/day
+26. parameter_ModeBOre2MillingRate				800 t/day (Makes expected net increase of 820 t/day)
+27. parameter_ModeBContingencyOre2MillingRate			2500 t/day (Decrease throughput by 50% for lack of Ore2)
+28. parameterVector_GeostatisticalModelParameters
+	1. 	30000 t	(minimum ore mass in parcel)
+	2.	50000 t (maximum ore mass in parcel)
+	3. 	30	(% chance of entering a new facies)
+	4. 	30	(expected % of Ore Type 2 in a new facies; assume normal)
+	5.	5	(standard deviation of % of Ore Type 2 in a new facies; assume normal)
+	6. 	1	(% variation accross pacels of the same facies; assume uniform)
+29. controlVariable_CriticalOre2Level				20400 t  (Deterministic optimum, assuming that controlVariable_TargetOreStockLevel is sufficiently high)
+30. controlVariable_TargetOreStockLevel				60000 t  (is 10 days worth of feed, assuming non-contingency)
+31. controlVariable_DurationOfContingencySegments		1 day
+
+
+Specifying Configuration Expression strings from Excel File
+-----------------------------------------------------------
+*** The following are specified in an Excel file; the content of the Excel file can be pasted into the
+*** appropriate cells in the Variable sheet.  Be sure to include the quotations ""
+1.  confExString_TerminatingCondition					string	scalar
+2.  confExString_InitialRateConfigurationNumber				string	scalar
+3.  confExString_InitialLevelValue					string	vector	5 x 1 
+4.  confExString_InitialTimerValue					string	vector	9 x 1
+5.  confExString_InitialDiscretelyDynamicalNumericalVariableValue	string	vector	3 x 1
+6.  confExString_InitialCategoricalVariableValue			string	vector	1 x 1  (To avoid error, since a zero-dimentional vector is not permitted)
+7.  confExString_LevelRate						string	matrix	5 x 7
+8.  confExString_LowerLevelThreshold					string	matrix	5 x 7
+9.  confExString_UpperLevelThreshold					string	matrix	5 x 7
+10. confExString_LowerLevelResultantRateConfiguration			string	matrix	5 x 7
+11. confExString_UpperLevelResultantRateConfiguration			string	matrix	5 x 7
+12. confExString_LowerLevelAssignmentAddress				string	matrix	5 x 7
+13. confExString_UpperLevelAssignmentAddress				string	matrix	5 x 7
+14. confExString_TimerRate						string	matrix	9 x 7
+15. confExString_LowerTimerThreshold					string	matrix	9 x 7
+16. confExString_UpperTimerThreshold					string	matrix	9 x 7
+17. confExString_LowerTimerResultantRateConfiguration			string	matrix	9 x 7
+18. confExString_UpperTimerResultantRateConfiguration			string	matrix	9 x 7
+19. confExString_LowerTimerAssignmentAddress				string	matrix	9 x 7
+20. confExString_UpperTimerAssignmentAddress				string	matrix	9 x 7
+21. confExString_AssignmentSequence					string	matrix	6 x 7
+
+
+Labels for DRS dynamic variables (in Expression Sheet) 
+--------------------------------
+OreExtraction_Level
+OreExtractedFromCurrentParcel_Level
+OreStock_Level
+Ore1Stock_Level
+Ore2Stock_Level
+TimeExecutedInCurrentCampaignOrShutdown_Timer
+TimeExecutedInCurrentContingencySegment_Timer
+TimeInModeA_Timer
+TimeInModeAContingency_Timer
+TimeInModeAMineSurging_Timer
+TimeInModeB_Timer
+TimeInModeBContingency_Timer
+TimeInModeBMineSurging_Timer
+TimeInShutdown_Timer
+OreExtraction_Rate
+OreExtractedFromCurrentParcel_Rate
+OreStock_Rate
+Ore1Stock_Rate
+Ore2Stock_Rate
+TimeExecutedInCurrentCampaignOrShutdown_Rate
+TimeExecutedInCurrentContingencySegment_Rate
+TimeInModeA_Rate
+TimeInModeAContingency_Rate
+TimeInModeAMineSurging_Rate
+TimeInModeB_Rate
+TimeInModeBContingency_Rate
+TimeInModeBMineSurging_Rate
+TimeInShutdown_Rate
+MassOfCurrentParcel
+PercentageOfOre2InCurrentParcel
+NextParcelIsNewFacies
+
+22. OreExtraction_Level
+	drs_Level(1)
+
+23. OreExtractedFromCurrentParcel_Level
+	drs_Level(2)
+
+24. OreStock_Level
+	drs_Level(3)
+
+25. Ore1Stock_Level
+	drs_Level(4)
+
+26. Ore2Stock_Level
+	drs_Level(5)
+
+27. TimeExecutedInCurrentCampaignOrShutdown_Timer
+	drs_Timer(1)
+
+28. TimeExecutedInCurrentContingencySegment_Timer
+	drs_Timer(2)
+
+29. TimeInModeA_Timer
+	drs_Timer(3)
+
+30. TimeInModeAContingency_Timer
+	drs_Timer(4)
+
+31. TimeInModeAMineSurging_Timer
+	drs_Timer(5)
+
+32. TimeInModeB_Level
+	drs_Timer(6)
+
+33. TimeInModeBContingency_Timer
+	drs_Timer(7)
+
+34. TimeInModeBMineSurging_Timer
+	drs_Timer(8)
+
+35. TimeInShutdown_Timer
+	drs_Timer(9)
+
+36. OreExtraction_Rate
+	Eval(confExString_LevelRate(1,drs_RateConfigurationNumber))
+
+37. OreExtractedFromCurrentParcel_Rate
+	Eval(confExString_LevelRate(2,drs_RateConfigurationNumber))
+
+38. OreStock_Rate
+	Eval(confExString_LevelRate(3,drs_RateConfigurationNumber))
+
+39. Ore1Stock_Rate
+	Eval(confExString_LevelRate(4,drs_RateConfigurationNumber))
+
+40. Ore2Stock_Rate
+	Eval(confExString_LevelRate(5,drs_RateConfigurationNumber))
+
+41. TimeRemainingInCurrentCampaignOrShutdown_Rate
+	Eval(confExString_TimerRate(1,drs_RateConfigurationNumber))
+
+42. TimeRemainingInCurrentContingencySegment_Rate
+	Eval(confExString_TimerRate(2,drs_RateConfigurationNumber))
+
+43. TimeInModeA_Rate
+	Eval(confExString_TimerRate(3,drs_RateConfigurationNumber))
+
+44. TimeInModeAContingency_Rate
+	Eval(confExString_TimerRate(4,drs_RateConfigurationNumber))
+
+45. TimeInModeAMineSurging_Rate
+	Eval(confExString_TimerRate(5,drs_RateConfigurationNumber))
+
+46. TimeInModeB_Rate
+	Eval(confExString_TimerRate(6,drs_RateConfigurationNumber))
+
+47. TimeInModeBContingency_Rate
+	Eval(confExString_TimerRate(7,drs_RateConfigurationNumber))
+
+48. TimeInModeBMineSurging_Rate
+	Eval(confExString_TimerRate(8,drs_RateConfigurationNumber))
+
+49. TimeInShutdown_Rate
+	Eval(confExString_TimerRate(9,drs_RateConfigurationNumber))
+
+50. MassOfCurrentParcel
+	drs_DiscretelyDynamicalNumericalVariable(1)
+
+51. PercentageOfOre2InCurrentParcel
+	drs_DiscretelyDynamicalNumericalVariable(2)
+
+52. NextParcelIsNewFacies
+	drs_DiscretelyDynamicalNumericalVariable(3)
+
+
+Output Statistics
+-----------------
+PortionOfTimeInModeA
+PortionOfTimeInModeAContingency
+PortionOfTimeInModeAMineSurging
+PortionOfTimeInModeB
+PortionOfTimeInModeBContingency
+PortionOfTimeInModeBMineSurging
+PortionOfTimeInShutdown
+Throughput
+
+1.  PortionOfTimeInModeA
+	TimeInModeA_Timer/(TimeInModeA_Timer+TimeInModeAContingency_Timer+TimeInModeAMineSurging_Timer+TimeInModeB_Timer+TimeInModeBContingency_Timer+TimeInModeBMineSurging_Timer+TimeInShutdown_Timer)
+
+2.  PortionOfTimeInModeAContingency
+	TimeInModeAContingency_Timer/(TimeInModeA_Timer+TimeInModeAContingency_Timer+TimeInModeAMineSurging_Timer+TimeInModeB_Timer+TimeInModeBContingency_Timer+TimeInModeBMineSurging_Timer+TimeInShutdown_Timer)
+
+3.  PortionOfTimeInModeAMineSurging
+	TimeInModeAMineSurging_Timer/(TimeInModeA_Timer+TimeInModeAContingency_Timer+TimeInModeAMineSurging_Timer+TimeInModeB_Timer+TimeInModeBContingency_Timer+TimeInModeBMineSurging_Timer+TimeInShutdown_Timer)
+
+4.  PortionOfTimeInModeB
+	TimeInModeB_Timer/(TimeInModeA_Timer+TimeInModeAContingency_Timer+TimeInModeAMineSurging_Timer+TimeInModeB_Timer+TimeInModeBContingency_Timer+TimeInModeBMineSurging_Timer+TimeInShutdown_Timer)
+
+5.  PortionOfTimeInModeBContingency
+	TimeInModeBContingency_Timer/(TimeInModeA_Timer+TimeInModeAContingency_Timer+TimeInModeAMineSurging_Timer+TimeInModeB_Timer+TimeInModeBContingency_Timer+TimeInModeBMineSurging_Timer+TimeInShutdown_Timer)
+
+6.  PortionOfTimeInModeBMineSurging
+	TimeInModeBMineSurging_Timer/(TimeInModeA_Timer+TimeInModeAContingency_Timer+TimeInModeAMineSurging_Timer+TimeInModeB_Timer+TimeInModeBContingency_Timer+TimeInModeBMineSurging_Timer+TimeInShutdown_Timer)
+
+7.  PortionOfTimeInShutdown
+	TimeInShutdown_Timer/(TimeInModeA_Timer+TimeInModeAContingency_Timer+TimeInModeAMineSurging_Timer+TimeInModeB_Timer+TimeInModeBContingency_Timer+TimeInModeBMineSurging_Timer+TimeInShutdown_Timer)
+
+8.  Throughput
+	(OreExtraction_Level-parameter_OreToBeExtractedDuringWarmingPeriod)/(TimeInModeA_Timer+TimeInModeAContingency_Timer+TimeInModeAMineSurging_Timer+TimeInModeB_Timer+TimeInModeBContingency_Timer+TimeInModeBMineSurging_Timer)
+
+
+Plot 1:  Modes Plot
+-------------------
+Data Series
+	Mode A
+		Expression: 
+			3*((drs_RateConfigurationNumber == 1)+(drs_RateConfigurationNumber == 2)+(drs_RateConfigurationNumber == 3))
+		Line, DrawMode: 
+			Stairs
+	Mode B
+		Expression:
+			2*((drs_RateConfigurationNumber == 4)+(drs_RateConfigurationNumber == 5)+(drs_RateConfigurationNumber == 6))
+		Line, DrawMode:
+			Stairs
+	Shutdown
+		Expression:
+			1*(drs_RateConfigurationNumber == 7)
+		Line, DrawMode:
+			Stairs
+Axes
+	Time (X) Axes
+		Scale, Maximum: 1000
+		Scale, MajorIncrement: 100
+		Scale, AutoScrolePercent: 50
+	Left Value (Y) Axes
+		Scale, Maximum: 4
+		Scale, MajorIncrement: 1
+		Scale, AutoScaleMinimum: False
+		Scale, AutoScaleMaximum: False
+
+
+Plot 2:  Ore Level Plot
+-----------------------
+Data Series
+	Total Ore Stockpile Level
+		Expression:
+			OreStock_Level/1000
+	Ore 1 Stockpile Level
+		Expression:
+			Ore1Stock_Level/1000
+	Ore 2 Stockpile Level
+		Expression:
+			Ore2Stock_Level/1000
+		Line,Color: 
+			Pink
+Axes
+	Time (X) Axes
+		Scale, Maximum: 1000
+		Scale, MajorIncrement: 100
+		Scale, AutoScrolePercent: 50
+	Left Value (Y) Axes
+		Scale, Maximum: 80
+		Scale, MajorIncrement: 10
+		Scale, AutoScaleMinimum: False
+		Scale, AutoScaleMaximum: False
+
+
+
+=============================================================================================================
+=============================================================================================================
+============================== Assembly and Configuration of Arena Modules ==================================
+=============================================================================================================
+=============================================================================================================
+
+Subsystems
+----------
+1. Initialization
+2. Rate Configuration
+3. Threshold Characterization
+4. Simulation Advancement
+5. Assignment and External Code Execution
+
+
+
+=============================================================================================================
+=========================================== 1. Initialization ===============================================
+=============================================================================================================
+
+Create->Assign1->[[Decide->Assign2 (loop back to preceeding Decide)]]->Assign3-> Route
+
+
+"Create DiscreteRateControlEntity" Create
+-----------------------------------------
+Entity Type: DiscreteRateControlEntity
+Time Between Arrivals: Constant
+Max Arrivals: 1
+
+
+"Initialize Index RateConfigurationNumber and TimeOfPreviousDRSUpdate" Assign 1
+-----------------------------------------------------------------------------------
+Attribute:Index (New attribute)
+	1
+drs_RateConfigurationNumber
+	Eval(confExString_InitialRateConfigurationNumber)
+drs_TimeOfPreviousDRSUpdate
+	0
+
+
+"Continue Initialization Loop" Decide
+-------------------------------------
+2-way by Condition,Expression:
+	Index <= MX(dim_NumberOfLevels, dim_NumberOfTimers, dim_NumberOfDiscretelyDynamicalNumericalVariables, dim_NumberOfCategoricalVariables)
+
+
+"Assign Initialization Parameter Values in Loop" Assign2
+--------------------------------------------------------
+drs_Level(MN(Index,dim_NumberOfLevels))
+	Eval(confExString_InitialLevelValue(MN(Index,dim_NumberOfLevels)))
+drs_Timer(MN(Index,dim_NumberOfTimers))
+	Eval(confExString_InitialTimerValue(MN(Index,dim_NumberOfTimers)))
+drs_DiscretelyDynamicalNumericalVariable(MN(Index,dim_NumberOfDiscretelyDynamicalNumericalVariables))
+	Eval(confExString_InitialDiscretelyDynamicalNumericalVariableValue(MN(Index,dim_NumberOfDiscretelyDynamicalNumericalVariables)))
+drs_CategoricalVariable(MN(Index,dim_NumberOfCategoricalVariables))
+	confExString_InitialCategoricalVariableValue(MN(Index,dim_NumberOfCategoricalVariables))
+Attribute:Index
+	Index+1
+
+
+"Reset Index Following Initialization Loop" Assign
+--------------------------------------------------
+Attribute:Index 
+	1
+
+
+"Route from Initialization to Threshold Characterization" Route
+---------------------------------------------------------------
+Station Name: Threshold Characterization
+
+
+
+=============================================================================================================
+========================================= 2. Rate Configuration =============================================
+=============================================================================================================
+
+Station->Assign->Route
+
+
+"Rate Configuration Station" Station
+------------------------------------
+Station Name: Rate Configuration
+
+
+"Update RateConfigurationNumber" Assign
+---------------------------------------
+drs_RateConfigurationNumber
+	(drs_ThresholdIsCrossedByTimer == 0)*(drs_DirectionOfThresholdCrossing == -1)*Eval(confExString_LowerLevelResultantRateConfiguration(MN(drs_ThresholdCrossingLevelOrTimerNumber,dim_NumberOfLevels),drs_RateConfigurationNumber)) + (drs_ThresholdIsCrossedByTimer == 0)*(drs_DirectionOfThresholdCrossing == 1)*Eval(confExString_UpperLevelResultantRateConfiguration(MN(drs_ThresholdCrossingLevelOrTimerNumber,dim_NumberOfLevels),drs_RateConfigurationNumber)) + (drs_ThresholdIsCrossedByTimer == 1)*(drs_DirectionOfThresholdCrossing == -1)*Eval(confExString_LowerTimerResultantRateConfiguration(MN(drs_ThresholdCrossingLevelOrTimerNumber,dim_NumberOfTimers),drs_RateConfigurationNumber)) + (drs_ThresholdIsCrossedByTimer == 1)*(drs_DirectionOfThresholdCrossing == 1)*Eval(confExString_UpperTimerResultantRateConfiguration(MN(drs_ThresholdCrossingLevelOrTimerNumber,dim_NumberOfTimers),drs_RateConfigurationNumber))
+
+
+"Route from Rate Configuration to Threshold Characterization" Route
+-------------------------------------------------------------------
+Station Name: Threshold Characterization
+
+
+
+=============================================================================================================
+===================================== 3. Threshold Characterization =========================================
+=============================================================================================================
+
+Station->Assign1->[[Decide->Assign2 (loop back to preceeding Decide)]]->Assign3-> Route
+
+
+"Threshold Characterization Station" Station
+--------------------------------------------
+Station Name: Threshold Characterization
+
+
+"Temporarilty Set DurationUntilThresholdCrossing to 99999 and ThresholdCrossingLevelOrTimerNumber to 0" Assign1
+---------------------------------------------------------------------------------------------------------------
+drs_DurationUntilThresholdCrossing
+	99999
+drs_ThresholdCrossingLevelOrTimerNumber
+	0
+
+
+"Continue Threshold Characteriation Loop" Decide
+------------------------------------------------
+2-way by Condition,Expression:
+	Index <= MX(dim_NumberOfLevels, dim_NumberOfTimers)
+
+
+"Characterize Threshold Crossing Event in Loop" Assign2
+-------------------------------------------------------
+drs_DurationUntilThresholdCrossing
+	MN(drs_DurationUntilThresholdCrossing,
+(Eval(confExString_LevelRate(MN(Index,dim_NumberOfLevels),drs_RateConfigurationNumber))<0)*(Eval(confExString_LowerLevelThreshold(MN(Index,dim_NumberOfLevels),drs_RateConfigurationNumber))-drs_Level(MN(Index,dim_NumberOfLevels)))/(Eval(confExString_LevelRate(MN(Index,dim_NumberOfLevels),drs_RateConfigurationNumber))+(Eval(confExString_LevelRate(MN(Index,dim_NumberOfLevels),drs_RateConfigurationNumber))==0))+(Eval(confExString_LevelRate(MN(Index,dim_NumberOfLevels),drs_RateConfigurationNumber))>0)*(Eval(confExString_UpperLevelThreshold(MN(Index,dim_NumberOfLevels),drs_RateConfigurationNumber))-drs_Level(MN(Index,dim_NumberOfLevels)))/(Eval(confExString_LevelRate(MN(Index,dim_NumberOfLevels),drs_RateConfigurationNumber))+(Eval(confExString_LevelRate(MN(Index,dim_NumberOfLevels),drs_RateConfigurationNumber))==0))+(Eval(confExString_LevelRate(MN(Index,dim_NumberOfLevels),drs_RateConfigurationNumber))==0||Index>dim_NumberOfLevels)*99999,
+(Eval(confExString_TimerRate(MN(Index,dim_NumberOfTimers),drs_RateConfigurationNumber))<0)*(Eval(confExString_LowerTimerThreshold(MN(Index,dim_NumberOfTimers),drs_RateConfigurationNumber))-drs_Timer(MN(Index,dim_NumberOfTimers)))/(Eval(confExString_TimerRate(MN(Index,dim_NumberOfTimers),drs_RateConfigurationNumber))+(Eval(confExString_TimerRate(MN(Index,dim_NumberOfTimers),drs_RateConfigurationNumber))==0))+(Eval(confExString_TimerRate(MN(Index,dim_NumberOfTimers),drs_RateConfigurationNumber))>0)*(Eval(confExString_UpperTimerThreshold(MN(Index,dim_NumberOfTimers),drs_RateConfigurationNumber))-drs_Timer(MN(Index,dim_NumberOfTimers)))/(Eval(confExString_TimerRate(MN(Index,dim_NumberOfTimers),drs_RateConfigurationNumber))+(Eval(confExString_TimerRate(MN(Index,dim_NumberOfTimers),drs_RateConfigurationNumber))==0))+(Eval(confExString_TimerRate(MN(Index,dim_NumberOfTimers),drs_RateConfigurationNumber))==0||Index>dim_NumberOfTimers)*99999)
+
+drs_ThresholdCrossingLevelOrTimerNumber
+	drs_ThresholdCrossingLevelOrTimerNumber + (Index-drs_ThresholdCrossingLevelOrTimerNumber)*(drs_DurationUntilThresholdCrossing == MN(
+(Eval(confExString_LevelRate(MN(Index,dim_NumberOfLevels),drs_RateConfigurationNumber))<0)*(Eval(confExString_LowerLevelThreshold(MN(Index,dim_NumberOfLevels),drs_RateConfigurationNumber))-drs_Level(MN(Index,dim_NumberOfLevels)))/(Eval(confExString_LevelRate(MN(Index,dim_NumberOfLevels),drs_RateConfigurationNumber))+(Eval(confExString_LevelRate(MN(Index,dim_NumberOfLevels),drs_RateConfigurationNumber))==0))+(Eval(confExString_LevelRate(MN(Index,dim_NumberOfLevels),drs_RateConfigurationNumber))>0)*(Eval(confExString_UpperLevelThreshold(MN(Index,dim_NumberOfLevels),drs_RateConfigurationNumber))-drs_Level(MN(Index,dim_NumberOfLevels)))/(Eval(confExString_LevelRate(MN(Index,dim_NumberOfLevels),drs_RateConfigurationNumber))+(Eval(confExString_LevelRate(MN(Index,dim_NumberOfLevels),drs_RateConfigurationNumber))==0))+(Eval(confExString_LevelRate(MN(Index,dim_NumberOfLevels),drs_RateConfigurationNumber))==0||Index>dim_NumberOfLevels)*99999,
+(Eval(confExString_TimerRate(MN(Index,dim_NumberOfTimers),drs_RateConfigurationNumber))<0)*(Eval(confExString_LowerTimerThreshold(MN(Index,dim_NumberOfTimers),drs_RateConfigurationNumber))-drs_Timer(MN(Index,dim_NumberOfTimers)))/(Eval(confExString_TimerRate(MN(Index,dim_NumberOfTimers),drs_RateConfigurationNumber))+(Eval(confExString_TimerRate(MN(Index,dim_NumberOfTimers),drs_RateConfigurationNumber))==0))+(Eval(confExString_TimerRate(MN(Index,dim_NumberOfTimers),drs_RateConfigurationNumber))>0)*(Eval(confExString_UpperTimerThreshold(MN(Index,dim_NumberOfTimers),drs_RateConfigurationNumber))-drs_Timer(MN(Index,dim_NumberOfTimers)))/(Eval(confExString_TimerRate(MN(Index,dim_NumberOfTimers),drs_RateConfigurationNumber))+(Eval(confExString_TimerRate(MN(Index,dim_NumberOfTimers),drs_RateConfigurationNumber))==0))+(Eval(confExString_TimerRate(MN(Index,dim_NumberOfTimers),drs_RateConfigurationNumber))==0||Index>dim_NumberOfTimers)*99999))
+
+Attribute:Index
+	Index+1
+
+
+"Reset Index and Determine ThresholdIsCrossedByTimer and DirectionOfThresholdCrossing" Assign3
+----------------------------------------------------------------------------------------------
+Attribute:Index
+	1
+drs_ThresholdIsCrossedByTimer
+	MN(
+0+(drs_DurationUntilThresholdCrossing <> ((Eval(confExString_LowerLevelThreshold(MN(drs_ThresholdCrossingLevelOrTimerNumber,dim_NumberOfLevels),drs_RateConfigurationNumber))-drs_Level(MN(drs_ThresholdCrossingLevelOrTimerNumber,dim_NumberOfLevels)))/(Eval(confExString_LevelRate(MN(drs_ThresholdCrossingLevelOrTimerNumber,dim_NumberOfLevels),drs_RateConfigurationNumber))+(Eval(confExString_LevelRate(MN(drs_ThresholdCrossingLevelOrTimerNumber,dim_NumberOfLevels),drs_RateConfigurationNumber))==0))))*99999 + (drs_ThresholdCrossingLevelOrTimerNumber>dim_NumberOfLevels)*99999,
+0+(drs_DurationUntilThresholdCrossing <> ((Eval(confExString_UpperLevelThreshold(MN(drs_ThresholdCrossingLevelOrTimerNumber,dim_NumberOfLevels),drs_RateConfigurationNumber))-drs_Level(MN(drs_ThresholdCrossingLevelOrTimerNumber,dim_NumberOfLevels)))/(Eval(confExString_LevelRate(MN(drs_ThresholdCrossingLevelOrTimerNumber,dim_NumberOfLevels),drs_RateConfigurationNumber))+(Eval(confExString_LevelRate(MN(drs_ThresholdCrossingLevelOrTimerNumber,dim_NumberOfLevels),drs_RateConfigurationNumber))==0))))*99999 + (drs_ThresholdCrossingLevelOrTimerNumber>dim_NumberOfLevels)*99999,
+1+(drs_DurationUntilThresholdCrossing <> ((Eval(confExString_LowerTimerThreshold(MN(drs_ThresholdCrossingLevelOrTimerNumber,dim_NumberOfTimers),drs_RateConfigurationNumber))-drs_Timer(MN(drs_ThresholdCrossingLevelOrTimerNumber,dim_NumberOfTimers)))/(Eval(confExString_TimerRate(MN(drs_ThresholdCrossingLevelOrTimerNumber,dim_NumberOfTimers),drs_RateConfigurationNumber))+(Eval(confExString_TimerRate(MN(drs_ThresholdCrossingLevelOrTimerNumber,dim_NumberOfTimers),drs_RateConfigurationNumber))==0))))*99999 + (drs_ThresholdCrossingLevelOrTimerNumber>dim_NumberOfTimers)*99999,
+1+(drs_DurationUntilThresholdCrossing <> ((Eval(confExString_UpperTimerThreshold(MN(drs_ThresholdCrossingLevelOrTimerNumber,dim_NumberOfTimers),drs_RateConfigurationNumber))-drs_Timer(MN(drs_ThresholdCrossingLevelOrTimerNumber,dim_NumberOfTimers)))/(Eval(confExString_TimerRate(MN(drs_ThresholdCrossingLevelOrTimerNumber,dim_NumberOfTimers),drs_RateConfigurationNumber))+(Eval(confExString_TimerRate(MN(drs_ThresholdCrossingLevelOrTimerNumber,dim_NumberOfTimers),drs_RateConfigurationNumber))==0))))*99999 + (drs_ThresholdCrossingLevelOrTimerNumber>dim_NumberOfTimers)*99999)
+
+drs_DirectionOfThresholdCrossing
+	-1*(Eval(confExString_LevelRate(drs_ThresholdCrossingLevelOrTimerNumber,drs_RateConfigurationNumber)) < 0)*(drs_ThresholdIsCrossedByTimer == 0) + 1*(Eval(confExString_LevelRate(drs_ThresholdCrossingLevelOrTimerNumber,drs_RateConfigurationNumber)) > 0)*(drs_ThresholdIsCrossedByTimer == 0) -1*(Eval(confExString_TimerRate(drs_ThresholdCrossingLevelOrTimerNumber,drs_RateConfigurationNumber)) < 0)*(drs_ThresholdIsCrossedByTimer == 1) + 1*(Eval(confExString_TimerRate(drs_ThresholdCrossingLevelOrTimerNumber,drs_RateConfigurationNumber)) > 0)*(drs_ThresholdIsCrossedByTimer == 1)
+
+
+"Route from Threshold Characterization to Simulation Advancement" Route
+-----------------------------------------------------------------------
+Station Name: Simulation Advancement
+
+
+
+=============================================================================================================
+======================================== 4. Simulation Advancement ==========================================
+=============================================================================================================
+
+Station->Hold->Delay->[[Decide1->Assign1]]->Assign2->Decide2->(Two Routes in Parallel)
+
+
+"Simulation Advancement Station" Station
+----------------------------------------
+Station Name: Simulation Advancement
+
+
+"Check That Terminating Condition Is Not Satisfied" Hold
+--------------------------------------------------------
+Scan for Condition,Condition:
+	Eval(ConfExString_TerminatingCondition)==0
+
+
+"Advance Clock To Next Threshold Crossing Event" Delay
+------------------------------------------------------
+Delay Time
+	MX(drs_DurationUntilThresholdCrossing,0)
+Units
+	Days
+
+
+"Continue Updating Levels and Timers" Decide1
+---------------------------------------------
+2-way by Condition,Expression:
+	Index <= MX(dim_NumberOfLevels, dim_NumberOfTimers)
+
+
+"Update Levels and Timers in Loop" Assign1
+------------------------------------------
+drs_Level(MN(Index,dim_NumberOfLevels))
+	drs_Level(MN(Index,dim_NumberOfLevels))+(Index<=dim_NumberOfLevels)*Eval(confExString_LevelRate(MN(Index,dim_NumberOfLevels),drs_RateConfigurationNumber))*(TNOW-drs_TimeOfPreviousDRSUpdate)
+drs_Timer(MN(Index,dim_NumberOfTimers))
+	drs_Timer(MN(Index,dim_NumberOfTimers))+(Index<=dim_NumberOfTimers)*Eval(confExString_TimerRate(MN(Index,dim_NumberOfTimers),drs_RateConfigurationNumber))*(TNOW-drs_TimeOfPreviousDRSUpdate)
+Attribute:Index
+	Index+1
+
+
+"Reset Index and Update TimeOfPreviousLevelsUpdate an determine AssignmentAddress" Assign2
+------------------------------------------------------------------------------------------
+Attribute:Index 
+	1
+drs_TimeOfPreviousDRSUpdate
+	TNOW
+Attribute:AssignmentAddress
+  (drs_ThresholdIsCrossedByTimer == 0)*(drs_DirectionOfThresholdCrossing == -1)*Eval(confExString_LowerLevelAssignmentAddress(MN(drs_ThresholdCrossingLevelOrTimerNumber,dim_NumberOfLevels),drs_RateConfigurationNumber)) 
++ (drs_ThresholdIsCrossedByTimer == 0)*(drs_DirectionOfThresholdCrossing ==  1)*Eval(confExString_UpperLevelAssignmentAddress(MN(drs_ThresholdCrossingLevelOrTimerNumber,dim_NumberOfLevels),drs_RateConfigurationNumber)) 
++ (drs_ThresholdIsCrossedByTimer == 1)*(drs_DirectionOfThresholdCrossing == -1)*Eval(confExString_LowerTimerAssignmentAddress(MN(drs_ThresholdCrossingLevelOrTimerNumber,dim_NumberOfTimers),drs_RateConfigurationNumber)) 
++ (drs_ThresholdIsCrossedByTimer == 1)*(drs_DirectionOfThresholdCrossing ==  1)*Eval(confExString_UpperTimerAssignmentAddress(MN(drs_ThresholdCrossingLevelOrTimerNumber,dim_NumberOfTimers),drs_RateConfigurationNumber))
+
+
+"Assignments and Codes are Pending" Decide
+------------------------------------------
+2-way by Condition,Expression:
+	AssignmentAddress <> 0
+
+
+"Route from Simulation Advancement to Assignment and Code Execution" Route
+---------------------------------------------------------------------------
+Station Name: Assignment and Code Execution
+
+
+"Route from Simulation Advancement to Rate Configuration" Route
+---------------------------------------------------------------
+Station Name: Rate Configuration
+
+
+
+=============================================================================================================
+================================= 5. Assignment and External Code Execution ================================
+=============================================================================================================
+
+Station->Decide1->[[Decide2->(4 Assigns and (1 Assign + 1 VBA Block in Parallel)]]->Route2
+            \
+             \->Assign1->Route1
+
+
+"Assignment and Code Execution Station" Station
+-----------------------------------------------
+Station Name: Assignment and Code Execution
+
+
+"Continue Assignments" Decide1
+------------------------------
+2-way by Condition,Expression:
+	(Index <= dim_MaxLengthOfAssignmentSequence)*(Len(confExString_AssignmentSequence(AssignmentAddress,MN(Index,dim_MaxLengthOfAssignmentSequence))) <> 0)
+
+
+"Reset Index Following Assignments Loop" Assign1
+------------------------------------------------
+Attribute:Index
+	1
+
+
+"Route from Assignment and Code Execution to Rate Configuration" Route1
+------------------------------------------------------------------------
+Station Name: Rate Configuration
+
+
+"Determine Variable Type" Decide2
+--------------------------------
+N-way by Condition
+Expression
+	Mid(confExString_AssignmentSequence(AssignmentAddress,Index),1,1) == "L"
+Expression
+	Mid(confExString_AssignmentSequence(AssignmentAddress,Index),1,1) == "T"
+Expression
+	Mid(confExString_AssignmentSequence(AssignmentAddress,Index),1,1) == "N"
+Expression
+	Mid(confExString_AssignmentSequence(AssignmentAddress,Index),1,1) == "C"
+
+
+"Assign New Level Value in Loop" Assign
+---------------------------------------
+drs_Level(Eval(Mid(confExString_AssignmentSequence(AssignmentAddress,Index),2,3)))
+	Eval(Mid(confExString_AssignmentSequence(AssignmentAddress,Index),6,Len(confExString_AssignmentSequence(AssignmentAddress,Index))-5))
+Attribute:Index
+	Index+1
+
+
+"Assign New Timer Value in Loop" Assign
+---------------------------------------
+drs_Timer(Eval(Mid(confExString_AssignmentSequence(AssignmentAddress,Index),2,3)))
+	Eval(Mid(confExString_AssignmentSequence(AssignmentAddress,Index),6,Len(confExString_AssignmentSequence(AssignmentAddress,Index))-5))
+Attribute:Index
+	Index+1
+
+
+"Assign New Discretely Dynamical Numerical Value in Loop" Assign
+----------------------------------------------------------------
+drs_DiscretelyDynamicalNumericalVariable(Eval(Mid(confExString_AssignmentSequence(AssignmentAddress,Index),2,3)))
+	Eval(Mid(confExString_AssignmentSequence(AssignmentAddress,Index),6,Len(confExString_AssignmentSequence(AssignmentAddress,Index))-5))
+Attribute:Index
+	Index+1
+
+
+"Assign New Categorical Value in Loop" Assign
+---------------------------------------------
+drs_CategoricalVariable(Eval(Mid(confExString_AssignmentSequence(AssignmentAddress,Index),2,3)))
+	Mid(confExString_AssignmentSequence(AssignmentAddress,Index),6,Len(confExString_AssignmentSequence(AssignmentAddress,Index))-5)
+Attribute:Index
+	Index+1
+
+
+"Extract External Code Number in Loop" Assign
+---------------------------------------------
+Attribute:ExternalCodeNumber
+	(Mid(confExString_AssignmentSequence(AssignmentAddress,Index),1,1) == "E")*Eval(Mid(confExString_AssignmentSequence(AssignmentAddress,Index),2,3))
+Attribute:Index
+	Index+1
+
+
+VBA Block
+---------
+SEE BELOW
+
+
+"Loop for Next Assignment" Route2
+---------------------------------
+Station Name: Assignment and Code Execution
+
+
+
+=============================================================================================================
+================================================== VBA Code =================================================
+=============================================================================================================
+The following should be pasted into the "ThisDocument" sheet of the VBA code.
+Depending on the value contained within the ExternalCodeNumber attribute, a different code can be run,
+as per the "Select Case Structure".  Here we have left Code1 and Code2 as blank examples.
+
+
+Option Explicit
+Private Sub VBA_Block_1_Fire()
+    'Declare and initialize SIMAN interface object "o"
+    Dim o As Arena.SIMAN
+    Set o = ThisDocument.Model.SIMAN
+    
+    'Extract code number of the subroutine that is to be called
+    Dim CodeNumber As Integer
+    CodeNumber = CInt(o.EntityAttribute(o.ActiveEntity, o.SymbolNumber("ExternalCodeNumber")))
+    
+    'Call on different code dependending on the value of CodeNumber
+    Select Case CodeNumber
+        Case 0
+            'Run no code in the case of CodeNumber = 0
+        Case 1
+            Call Code1
+        Case 2
+            Call Code2
+        Case Else
+    End Select
+End Sub
+
+
+Private Sub Code1()
+    'This is the code that is to be run in case of Code 1
+    
+    'Transmit results to Level, Timer, DiscretelyDynamicalNumerical and Categorical Variables
+    'o.VariableArrayValue(o.SymbolNumber("drs_Level", ___________)) = ##NEW VALUE##
+    'o.VariableArrayValue(o.SymbolNumber("drs_Level", ___________)) = ##NEW VALUE##
+    'o.VariableArrayValue(o.SymbolNumber("drs_Level", ___________)) = ##NEW VALUE##
+    'Etc.
+    'o.VariableArrayValue(o.SymbolNumber("drs_Timer", ___________)) = ##NEW VALUE##
+    'o.VariableArrayValue(o.SymbolNumber("drs_Timer", ___________)) = ##NEW VALUE##
+    'o.VariableArrayValue(o.SymbolNumber("drs_Timer", ___________)) = ##NEW VALUE##
+    'Etc.
+    'o.VariableArrayValue(o.SymbolNumber("drs_DiscretelyDynamicalNumericalVariable", ___________)) = ##NEW VALUE##
+    'o.VariableArrayValue(o.SymbolNumber("drs_DiscretelyDynamicalNumericalVariable", ___________)) = ##NEW VALUE##
+    'o.VariableArrayValue(o.SymbolNumber("drs_DiscretelyDynamicalNumericalVariable", ___________)) = ##NEW VALUE##
+    'Etc.
+    'o.VariableArrayValue(o.SymbolNumber("drs_CategoricalVariable", ___________)) = ##NEW VALUE##
+    'o.VariableArrayValue(o.SymbolNumber("drs_CategoricalVariable", ___________)) = ##NEW VALUE##
+    'o.VariableArrayValue(o.SymbolNumber("drs_CategoricalVariable", ___________)) = ##NEW VALUE##
+End Sub
+
+
+Private Sub Code2()
+    'This is the code that is to be run in case of Code 2
+End Sub
+    'Etc.

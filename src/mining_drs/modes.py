@@ -1,17 +1,21 @@
 from enum import Enum
 from typing import Callable, Dict, Any
 
+
 class MiningMode(Enum):
     """Enumeration of operational modes for a mining simulation."""
+
     NORMAL = "Normal"
     MAINTENANCE = "Maintenance"
     CONTINGENCY = "Contingency"
 
+
 class SequenceRegistry:
     """
-    Maps specific modes (Enums) to Python callable functions, replacing 
+    Maps specific modes (Enums) to Python callable functions, replacing
     legacy string evaluation with structured Command Patterns.
     """
+
     def __init__(self):
         self.sequences: Dict[Enum, Callable] = {}
 
@@ -26,6 +30,6 @@ class SequenceRegistry:
         """
         if mode not in self.sequences:
             raise ValueError(f"Fail Fast: Sequence for mode {mode} does not exist!")
-        
+
         # Call the python function cleanly
         return self.sequences[mode](context)

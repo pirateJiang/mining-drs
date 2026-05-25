@@ -1,25 +1,29 @@
 from abc import ABC, abstractmethod
 
+
 class DRSEngine(ABC):
     """
     Base class for DRS simulation engines.
-    Abstracts the Arena '5 Islands' into a synchronized execution loop.
     """
-    
+
+    def __init__(self):
+        self.current_time = 0.0
+        self.variables = []
+
     def run(self):
-        """The main simulation loop executing the 5 islands sequentially."""
-        self.initialize_state() # Island 1
-        
+        """The main simulation loop."""
+        self.initialize_state()  # Island 1
+
         while not self.is_terminating_condition_met():
-            dt = self.calculate_time_to_next_threshold() # Island 2
-            
+            dt = self.calculate_time_to_next_threshold()  # Island 2
+
             # Prevent infinite loops if dt is 0 but conditions aren't advancing
             if dt < 0:
                 raise ValueError("Time delta (dt) cannot be negative.")
-                
-            self.advance_time(dt)                        # Island 3
-            self.check_and_trigger_thresholds()          # Island 4
-            self.record_statistics()                     # Island 5
+
+            self.advance_time(dt)  # Island 3
+            self.check_and_trigger_thresholds()  # Island 4
+            self.record_statistics()  # Island 5
 
     @abstractmethod
     def initialize_state(self):
@@ -36,10 +40,12 @@ class DRSEngine(ABC):
         """Island 2: Determine the time step (dt) to the next event/threshold."""
         pass
 
-    @abstractmethod
     def advance_time(self, dt: float):
         """Island 3: Update levels and internal clocks by dt."""
-        pass
+        self.current_time += dt
+        for var in self.variables:
+            if hasattr(var, "update"):
+                var.update(dt)
 
     @abstractmethod
     def check_and_trigger_thresholds(self):

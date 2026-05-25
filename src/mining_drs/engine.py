@@ -3,6 +3,7 @@ from typing import Tuple, Optional
 from .variables import Variable
 from .module import Module
 
+
 class DRSEngine:
     """
     The runner that manages the external simulation loop.
@@ -16,7 +17,7 @@ class DRSEngine:
 
     def run(self, max_time: Optional[float] = None):
         """The main simulation loop."""
-        
+
         # Initialize state via standard OO contract
         self.model.initialize_state()
 
@@ -24,12 +25,13 @@ class DRSEngine:
             # Check standard OO contract terminating condition
             if self.model.is_terminating_condition_met():
                 break
-            
+
             # Check standard time-based terminating condition
             if max_time is not None and self.current_time >= max_time:
                 break
 
             # 1. Ask the model to set its current rates based on its state
+            self.model.reset_variables()
             self.model.update_rates()
 
             # 2. Look at all variables to find the closest threshold
@@ -51,7 +53,9 @@ class DRSEngine:
             # 5. Record statistics blindly via standard OO contract hook
             self.model.record_statistics(self.current_time)
 
-    def calculate_min_dt(self, variables: list[Variable]) -> Tuple[float, Optional[Variable], bool]:
+    def calculate_min_dt(
+        self, variables: list[Variable]
+    ) -> Tuple[float, Optional[Variable], bool]:
         """
         Determine the time step (dt) to the next event/threshold.
         Returns a tuple of (min_dt, trigger_var, is_upper).

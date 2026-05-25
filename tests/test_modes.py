@@ -1,6 +1,6 @@
 import pytest
 from enum import Enum
-from mining_drs.modes import SequenceRegistry
+from mining_drs.modes import StateMachine
 
 
 class MockMode(Enum):
@@ -10,9 +10,10 @@ class MockMode(Enum):
 
 
 def test_sequence_registry_registration():
-    registry = SequenceRegistry()
+    registry = StateMachine()
 
-    def normal_sequence(context):
+    context = {}
+    def normal_sequence():
         context["status"] = "running_normally"
         return context["status"]
 
@@ -23,27 +24,28 @@ def test_sequence_registry_registration():
 
 
 def test_sequence_registry_execution():
-    registry = SequenceRegistry()
+    registry = StateMachine()
 
-    def maintenance_sequence(context):
+    context = {"durability": 50}
+    
+    def maintenance_sequence():
         context["durability"] += 10
         return True
 
     registry.register(MockMode.MAINTENANCE, maintenance_sequence)
 
-    context = {"durability": 50}
-    result = registry.execute(MockMode.MAINTENANCE, context)
+    result = registry.apply_rates(MockMode.MAINTENANCE)
 
     assert result is True
     assert context["durability"] == 60
 
 
 def test_sequence_registry_fails_fast_on_missing_mode():
-    registry = SequenceRegistry()
+    registry = StateMachine()
 
     # We never registered Contingency mode
     with pytest.raises(
         ValueError,
         match="Fail Fast: Sequence for mode MockMode.CONTINGENCY does not exist!",
     ):
-        registry.execute(MockMode.CONTINGENCY, context={})
+        registry.apply_rates(MockMode.CONTINGENCY)

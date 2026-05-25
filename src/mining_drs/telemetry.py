@@ -27,7 +27,10 @@ class Telemetry:
         state = {"time": current_time}
 
         # Dynamically grab the value of every tracked variable
-        if hasattr(self.engine, "variables"):
+        if callable(getattr(self.engine, "variables", None)):
+            for variable in self.engine.variables():
+                state[variable.name] = variable.value
+        elif hasattr(self.engine, "variables"):
             for variable in self.engine.variables:
                 state[variable.name] = variable.value
 

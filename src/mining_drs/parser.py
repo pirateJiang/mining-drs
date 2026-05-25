@@ -10,9 +10,7 @@ class FormulaParser:
     prevents the overhead of evaluating strings repeatedly during the simulation loop.
     """
 
-    def __init__(self, parameters: dict):
-        self.params = parameters
-
+    def __init__(self):
         # Mapped Python functions
         self.safe_globals = {
             "__builtins__": {},  # Secure the eval namespace
@@ -23,7 +21,7 @@ class FormulaParser:
             "random_normal": np.random.normal,
         }
 
-    def parse_expression(self, expression_string: str):
+    def parse_expression(self, expression_string: str, init_context: dict):
         """
         Converts an Arena string like "MX(NORM(param1, param2), 0)"
         into a callable Python function.
@@ -41,13 +39,13 @@ class FormulaParser:
         # 3. Handle logic operators
         clean_str = clean_str.replace("&&", " and ").replace("||", " or ")
 
-        # 3. Compile the code once. This throws SyntaxError if the expression is malformed.
+        # 4. Compile the code once. This throws SyntaxError if the expression is malformed.
         try:
             compiled_code = compile(clean_str, "<string>", "eval")
 
             # Fail Fast Check: Evaluate it once to catch NameErrors (e.g. typing NROM instead of NORM)
-            # or missing parameters in self.params.
-            eval(compiled_code, self.safe_globals, self.params)
+            # or missing parameters in init_context.
+            eval(compiled_code, self.safe_globals, init_context)
 
         except NameError as e:
             raise ValueError(
@@ -58,9 +56,9 @@ class FormulaParser:
                 f"Failed to validate expression '{expression_string}': {e}"
             )
 
-        # 4. Return the compiled function closure
-        def executor():
+        # 5. Return the compiled function closure
+        def executor(live_context: dict):
             # Execution happens natively without re-evaluating the string, making it lightning-fast.
-            return eval(compiled_code, self.safe_globals, self.params)
+            return eval(compiled_code, self.safe_globals, live_context)
 
         return executor

@@ -29,3 +29,11 @@ class MiningDRSConfig(CoreDRSConfig):
     mode_b_ore1_milling_rate: float = 4600.0
     mode_b_ore2_milling_rate: float = 800.0
     mode_b_contingency_ore2_milling_rate: float = 2500.0
+    
+    # Geostatistical Parameters
+    min_ore_mass: float = 30000.0
+    max_ore_mass: float = 50000.0
+    prob_new_facies: float = 0.3
+    mean_grade_new_facies: float = 30.0
+    std_dev_new_facies: float = 5.0
+    variation_same_facies: float = 1.0

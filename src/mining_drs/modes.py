@@ -18,6 +18,7 @@ class SequenceRegistry:
 
     def __init__(self):
         self.sequences: Dict[Enum, Callable] = {}
+        self.transitions = {}
 
     def register(self, mode: Enum, func: Callable):
         """Register a callable sequence for a given mode."""
@@ -33,3 +34,23 @@ class SequenceRegistry:
 
         # Call the python function cleanly
         return self.sequences[mode](context)
+        
+    def register_transition(self, current_mode: Enum, next_mode: Any, trigger: Any, is_upper: bool = True):
+        """
+        Register a transition from a current mode to a next mode based on a trigger.
+        next_mode can be an Enum or a Callable that returns an Enum.
+        """
+        key = (current_mode, trigger, is_upper)
+        self.transitions[key] = next_mode
+
+    def get_next_mode(self, current_mode: Enum, trigger: Any, is_upper: bool = True, context: Any = None):
+        """
+        Get the next mode for a given trigger in the current mode.
+        """
+        key = (current_mode, trigger, is_upper)
+        if key in self.transitions:
+            nxt = self.transitions[key]
+            if callable(nxt):
+                return nxt(context)
+            return nxt
+        return None

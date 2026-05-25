@@ -1,10 +1,10 @@
 import math
 import random
 from enum import Enum
-from mining_drs.engine import DRSEngine
-from mining_drs.variables import Level, Timer
+from mining_drs import drs, DRSEngine
 from mining_drs.config import MiningDRSConfig
 from mining_drs.telemetry import Telemetry
+from mining_drs.modes import SequenceRegistry
 
 
 class MineMode(Enum):
@@ -17,165 +17,232 @@ class MineMode(Enum):
     SHUTDOWN = "Shutdown"
 
 
-class ExampleMineModel(DRSEngine):
+class ExampleMineModel(drs.Module):
     def __init__(self, config: MiningDRSConfig):
         super().__init__()
         self.config = config
         self.telemetry = Telemetry(self)
         self.current_mode = MineMode.MODE_A
-        self.next_event_trigger = None
-
-        # Geostatistical Parameters
-        self.min_ore_mass = 30000.0
-        self.max_ore_mass = 50000.0
-        self.prob_new_facies = 0.3
-        self.mean_grade_new_facies = 30.0
-        self.std_dev_new_facies = 5.0
-        self.variation_same_facies = 1.0
 
         # Parcel State
         self.mass_of_current_parcel = 40000.0
-        self.percentage_of_ore2 = 30.0
+        self.percentage_of_ore2 = self.config.mean_grade_new_facies
         self.next_parcel_is_new_facies = True
 
-    def initialize_state(self):
         # Initial Level Values
-        self.ore_extraction = Level("OreExtraction_Level", initial_value=0.0)
-        self.ore_extracted_from_current_parcel = Level(
+        self.ore_extraction = drs.Level("OreExtraction_Level", initial_value=0.0)
+        self.ore_extracted_from_current_parcel = drs.Level(
             "OreExtractedFromCurrentParcel_Level", initial_value=0.0
         )
-        self.ore_stock = Level(
+        self.ore_stock = drs.Level(
             "OreStock_Level", initial_value=self.config.target_ore_stock_level
         )
-        self.ore1_stock = Level(
+        self.ore1_stock = drs.Level(
             "Ore1Stock_Level",
-            initial_value=(1 - 0.3) * self.config.target_ore_stock_level,
+            initial_value=(1 - (self.config.mean_grade_new_facies / 100.0)) * self.config.target_ore_stock_level,
         )
-        self.ore2_stock = Level(
-            "Ore2Stock_Level", initial_value=0.3 * self.config.target_ore_stock_level
+        self.ore2_stock = drs.Level(
+            "Ore2Stock_Level", initial_value=(self.config.mean_grade_new_facies / 100.0) * self.config.target_ore_stock_level
         )
 
         # Initial Timer Values
-        self.time_executed_campaign_shutdown = Timer(
+        self.time_executed_campaign_shutdown = drs.Timer(
             "TimeExecutedInCurrentCampaignOrShutdown_Timer", initial_value=0.0
         )
-        self.time_executed_contingency = Timer(
+        self.time_executed_contingency = drs.Timer(
             "TimeExecutedInCurrentContingencySegment_Timer", initial_value=0.0
         )
-        self.time_mode_a = Timer("TimeInModeA_Timer", initial_value=0.0)
-        self.time_mode_a_contingency = Timer(
+        self.time_mode_a = drs.Timer("TimeInModeA_Timer", initial_value=0.0)
+        self.time_mode_a_contingency = drs.Timer(
             "TimeInModeAContingency_Timer", initial_value=0.0
         )
-        self.time_mode_a_surging = Timer("TimeInModeAMineSurging_Timer", initial_value=0.0)
-        self.time_mode_b = Timer("TimeInModeB_Timer", initial_value=0.0)
-        self.time_mode_b_contingency = Timer(
+        self.time_mode_a_surging = drs.Timer("TimeInModeAMineSurging_Timer", initial_value=0.0)
+        self.time_mode_b = drs.Timer("TimeInModeB_Timer", initial_value=0.0)
+        self.time_mode_b_contingency = drs.Timer(
             "TimeInModeBContingency_Timer", initial_value=0.0
         )
-        self.time_mode_b_surging = Timer("TimeInModeBMineSurging_Timer", initial_value=0.0)
-        self.time_shutdown = Timer("TimeInShutdown_Level", initial_value=0.0)
+        self.time_mode_b_surging = drs.Timer("TimeInModeBMineSurging_Timer", initial_value=0.0)
+        self.time_shutdown = drs.Timer("TimeInShutdown_Level", initial_value=0.0)
 
-        self.levels = [
-            self.ore_extraction,
-            self.ore_extracted_from_current_parcel,
-            self.ore_stock,
-            self.ore1_stock,
-            self.ore2_stock,
-        ]
-
-        self.timers = [
-            self.time_executed_campaign_shutdown,
-            self.time_executed_contingency,
-            self.time_mode_a,
-            self.time_mode_a_contingency,
-            self.time_mode_a_surging,
-            self.time_mode_b,
-            self.time_mode_b_contingency,
-            self.time_mode_b_surging,
-            self.time_shutdown,
-        ]
-
-        self.variables = self.levels + self.timers
+        self.registry = SequenceRegistry()
+        self._setup_registry()
 
         self.apply_mode(MineMode.MODE_A)
 
-    def _set_rates(self):
+    def _setup_registry(self):
         c = self.config
-        p_ore2 = self.percentage_of_ore2
+        
+        # ----------------------------------------------------
+        # RATE ASSIGNMENT SEQUENCES (Command Pattern)
+        # ----------------------------------------------------
+        def rate_seq_mode_a(ctx):
+            r = c.mode_a_ore1_milling_rate + c.mode_a_ore2_milling_rate
+            p = ctx.percentage_of_ore2
+            ctx.ore_extraction.rate = r
+            ctx.ore_extracted_from_current_parcel.rate = r
+            ctx.ore_stock.rate = 0.0
+            ctx.ore1_stock.rate = r * (1 - p / 100) - c.mode_a_ore1_milling_rate
+            ctx.ore2_stock.rate = r * (p / 100) - c.mode_a_ore2_milling_rate
+            ctx.time_mode_a.rate = 1.0
 
-        # Reset rates to 0
-        for var in self.variables:
+        def rate_seq_mode_a_contingency(ctx):
+            r = c.mode_a_contingency_ore1_milling_rate
+            p = ctx.percentage_of_ore2
+            ctx.ore_extraction.rate = r
+            ctx.ore_extracted_from_current_parcel.rate = r
+            ctx.ore_stock.rate = 0.0
+            ctx.ore1_stock.rate = r * (1 - p / 100) - r
+            ctx.ore2_stock.rate = r * (p / 100)
+            ctx.time_mode_a_contingency.rate = 1.0
+            ctx.time_executed_contingency.rate = 1.0
+
+        def rate_seq_mode_a_surging(ctx):
+            p = ctx.percentage_of_ore2
+            r = c.mode_a_ore1_milling_rate * 100 / (100 - p)
+            ctx.ore_extraction.rate = r
+            ctx.ore_extracted_from_current_parcel.rate = r
+            ctx.ore_stock.rate = r - c.mode_a_ore1_milling_rate - c.mode_a_ore2_milling_rate
+            ctx.ore1_stock.rate = 0.0
+            ctx.ore2_stock.rate = r * (p / 100) - c.mode_a_ore2_milling_rate
+            ctx.time_mode_a_surging.rate = 1.0
+
+        def rate_seq_mode_b(ctx):
+            r = c.mode_b_ore1_milling_rate + c.mode_b_ore2_milling_rate
+            p = ctx.percentage_of_ore2
+            ctx.ore_extraction.rate = r
+            ctx.ore_extracted_from_current_parcel.rate = r
+            ctx.ore_stock.rate = 0.0
+            ctx.ore1_stock.rate = r * (100 - p) / 100 - c.mode_b_ore1_milling_rate
+            ctx.ore2_stock.rate = r * (p / 100) - c.mode_b_ore2_milling_rate
+            ctx.time_mode_b.rate = 1.0
+
+        def rate_seq_mode_b_contingency(ctx):
+            r = c.mode_b_contingency_ore2_milling_rate
+            p = ctx.percentage_of_ore2
+            ctx.ore_extraction.rate = r
+            ctx.ore_extracted_from_current_parcel.rate = r
+            ctx.ore_stock.rate = 0.0
+            ctx.ore1_stock.rate = r * (100 - p) / 100
+            ctx.ore2_stock.rate = r * (p / 100) - r
+            ctx.time_mode_b_contingency.rate = 1.0
+            ctx.time_executed_contingency.rate = 1.0
+
+        def rate_seq_mode_b_surging(ctx):
+            p = ctx.percentage_of_ore2
+            r = c.mode_b_ore2_milling_rate * 100 / p
+            ctx.ore_extraction.rate = r
+            ctx.ore_extracted_from_current_parcel.rate = r
+            ctx.ore_stock.rate = r - c.mode_b_ore1_milling_rate - c.mode_b_ore2_milling_rate
+            ctx.ore1_stock.rate = r * (100 - p) / 100 - c.mode_b_ore1_milling_rate
+            ctx.ore2_stock.rate = 0.0
+            ctx.time_mode_b_surging.rate = 1.0
+
+        def rate_seq_shutdown(ctx):
+            ctx.time_shutdown.rate = 1.0
+
+        self.registry.register(MineMode.MODE_A, rate_seq_mode_a)
+        self.registry.register(MineMode.MODE_A_CONTINGENCY, rate_seq_mode_a_contingency)
+        self.registry.register(MineMode.MODE_A_MINE_SURGING, rate_seq_mode_a_surging)
+        self.registry.register(MineMode.MODE_B, rate_seq_mode_b)
+        self.registry.register(MineMode.MODE_B_CONTINGENCY, rate_seq_mode_b_contingency)
+        self.registry.register(MineMode.MODE_B_MINE_SURGING, rate_seq_mode_b_surging)
+        self.registry.register(MineMode.SHUTDOWN, rate_seq_shutdown)
+
+        # ----------------------------------------------------
+        # TRANSITIONS (Command Pattern for check_transitions)
+        # ----------------------------------------------------
+        
+        # Upper timer logic for coming out of shutdown
+        def end_of_shutdown(ctx):
+            ctx.time_executed_campaign_shutdown.reset()
+            if ctx.ore2_stock.value > ctx.config.critical_ore2_level:
+                if ctx.ore_stock.value <= ctx.config.target_ore_stock_level:
+                    return MineMode.MODE_A
+                else:
+                    return MineMode.MODE_A_MINE_SURGING
+            else:
+                if ctx.ore_stock.value <= ctx.config.target_ore_stock_level:
+                    return MineMode.MODE_B
+                else:
+                    return MineMode.MODE_B_MINE_SURGING
+
+        def end_of_campaign(ctx):
+            ctx.time_executed_campaign_shutdown.reset()
+            return MineMode.SHUTDOWN
+            
+        def end_of_contingency_a(ctx):
+            ctx.time_executed_contingency.reset()
+            return MineMode.MODE_A
+            
+        def end_of_contingency_b(ctx):
+            ctx.time_executed_contingency.reset()
+            return MineMode.MODE_B
+
+        # Non-mode transitions (Side effect functions)
+        def generate_parcel_action(ctx):
+            ctx._generate_next_parcel()
+            return None # no mode transition
+
+        def reset_timers_action(ctx):
+            if abs(ctx.ore_extraction.value - ctx.config.ore_to_be_extracted_during_warming_period) < 0.1:
+                ctx.time_mode_a.reset()
+                ctx.time_mode_a_contingency.reset()
+                ctx.time_mode_a_surging.reset()
+                ctx.time_mode_b.reset()
+                ctx.time_mode_b_contingency.reset()
+                ctx.time_mode_b_surging.reset()
+                ctx.time_shutdown.reset()
+            return None # no mode transition
+
+        # Register transitions across all modes
+        for mode in MineMode:
+            # Shared timer rules
+            if mode != MineMode.SHUTDOWN:
+                self.registry.register_transition(mode, end_of_campaign, self.time_executed_campaign_shutdown, is_upper=True)
+            else:
+                self.registry.register_transition(mode, end_of_shutdown, self.time_executed_campaign_shutdown, is_upper=True)
+
+            # Shared level rules (side-effects on upper thresholds)
+            self.registry.register_transition(mode, generate_parcel_action, self.ore_extracted_from_current_parcel, is_upper=True)
+            self.registry.register_transition(mode, reset_timers_action, self.ore_extraction, is_upper=True)
+
+        # Mode-specific timer rules
+        self.registry.register_transition(MineMode.MODE_A_CONTINGENCY, end_of_contingency_a, self.time_executed_contingency, is_upper=True)
+        self.registry.register_transition(MineMode.MODE_B_CONTINGENCY, end_of_contingency_b, self.time_executed_contingency, is_upper=True)
+
+        # Level Lower-bound mode changes
+        self.registry.register_transition(MineMode.MODE_A_MINE_SURGING, MineMode.MODE_A, self.ore_stock, is_upper=False)
+        self.registry.register_transition(MineMode.MODE_B_MINE_SURGING, MineMode.MODE_B, self.ore_stock, is_upper=False)
+        
+        self.registry.register_transition(MineMode.MODE_A, MineMode.MODE_A_MINE_SURGING, self.ore1_stock, is_upper=False)
+        self.registry.register_transition(MineMode.MODE_A_CONTINGENCY, MineMode.MODE_A_MINE_SURGING, self.ore1_stock, is_upper=False)
+        self.registry.register_transition(MineMode.MODE_B, MineMode.MODE_B_CONTINGENCY, self.ore1_stock, is_upper=False)
+
+        self.registry.register_transition(MineMode.MODE_A, MineMode.MODE_A_CONTINGENCY, self.ore2_stock, is_upper=False)
+        self.registry.register_transition(MineMode.MODE_B, MineMode.MODE_B_MINE_SURGING, self.ore2_stock, is_upper=False)
+        self.registry.register_transition(MineMode.MODE_B_CONTINGENCY, MineMode.MODE_B_MINE_SURGING, self.ore2_stock, is_upper=False)
+
+    def update_rates(self):
+        """The 'forward' pass. Defines how states interact."""
+        # 1. Reset all rates to 0
+        for var in self.variables():
             var.rate = 0.0
 
-        if self.current_mode == MineMode.MODE_A:
-            rate = c.mode_a_ore1_milling_rate + c.mode_a_ore2_milling_rate
-            self.ore_extraction.rate = rate
-            self.ore_extracted_from_current_parcel.rate = rate
-            self.ore_stock.rate = 0.0
-            self.ore1_stock.rate = rate * (1 - p_ore2 / 100) - c.mode_a_ore1_milling_rate
-            self.ore2_stock.rate = rate * (p_ore2 / 100) - c.mode_a_ore2_milling_rate
-            self.time_mode_a.rate = 1.0
+        # 2. Execute dynamic rate rules for current mode
+        self.registry.execute(self.current_mode, self)
 
-        elif self.current_mode == MineMode.MODE_A_CONTINGENCY:
-            rate = c.mode_a_contingency_ore1_milling_rate
-            self.ore_extraction.rate = rate
-            self.ore_extracted_from_current_parcel.rate = rate
-            self.ore_stock.rate = 0.0
-            self.ore1_stock.rate = rate * (1 - p_ore2 / 100) - rate
-            self.ore2_stock.rate = rate * (p_ore2 / 100)
-            self.time_executed_contingency.rate = 1.0
-            self.time_mode_a_contingency.rate = 1.0
-
-        elif self.current_mode == MineMode.MODE_A_MINE_SURGING:
-            rate = c.mode_a_ore1_milling_rate * 100 / (100 - p_ore2)
-            self.ore_extraction.rate = rate
-            self.ore_extracted_from_current_parcel.rate = rate
-            self.ore_stock.rate = rate - c.mode_a_ore1_milling_rate - c.mode_a_ore2_milling_rate
-            self.ore1_stock.rate = 0.0
-            self.ore2_stock.rate = rate * (p_ore2 / 100) - c.mode_a_ore2_milling_rate
-            self.time_mode_a_surging.rate = 1.0
-
-        elif self.current_mode == MineMode.MODE_B:
-            rate = c.mode_b_ore1_milling_rate + c.mode_b_ore2_milling_rate
-            self.ore_extraction.rate = rate
-            self.ore_extracted_from_current_parcel.rate = rate
-            self.ore_stock.rate = 0.0
-            self.ore1_stock.rate = rate * (100 - p_ore2) / 100 - c.mode_b_ore1_milling_rate
-            self.ore2_stock.rate = rate * (p_ore2 / 100) - c.mode_b_ore2_milling_rate
-            self.time_mode_b.rate = 1.0
-
-        elif self.current_mode == MineMode.MODE_B_CONTINGENCY:
-            rate = c.mode_b_contingency_ore2_milling_rate
-            self.ore_extraction.rate = rate
-            self.ore_extracted_from_current_parcel.rate = rate
-            self.ore_stock.rate = 0.0
-            self.ore1_stock.rate = rate * (100 - p_ore2) / 100
-            self.ore2_stock.rate = rate * (p_ore2 / 100) - rate
-            self.time_executed_contingency.rate = 1.0
-            self.time_mode_b_contingency.rate = 1.0
-
-        elif self.current_mode == MineMode.MODE_B_MINE_SURGING:
-            rate = c.mode_b_ore2_milling_rate * 100 / p_ore2
-            self.ore_extraction.rate = rate
-            self.ore_extracted_from_current_parcel.rate = rate
-            self.ore_stock.rate = rate - c.mode_b_ore1_milling_rate - c.mode_b_ore2_milling_rate
-            self.ore1_stock.rate = rate * (100 - p_ore2) / 100 - c.mode_b_ore1_milling_rate
-            self.ore2_stock.rate = 0.0
-            self.time_mode_b_surging.rate = 1.0
-
-        elif self.current_mode == MineMode.SHUTDOWN:
-            self.time_shutdown.rate = 1.0
-
-        # Shared rates
+        # 3. Shared rate
         self.time_executed_campaign_shutdown.rate = 1.0
+
+        # 4. Set thresholds
+        self._set_thresholds()
 
     def _set_thresholds(self):
         c = self.config
-        # Clean up existing thresholds
-        for var in self.variables:
-            if hasattr(var, "upper_threshold"):
-                delattr(var, "upper_threshold")
-            if hasattr(var, "lower_threshold"):
-                delattr(var, "lower_threshold")
+        # Clean up existing thresholds by resetting them
+        for var in self.variables():
+            var.upper_threshold = math.inf
+            var.lower_threshold = -math.inf
 
         # Ore Extraction (upper)
         if self.ore_extraction.value < c.ore_to_be_extracted_during_warming_period:
@@ -192,7 +259,6 @@ class ExampleMineModel(DRSEngine):
             self.ore_stock.lower_threshold = c.target_ore_stock_level
         if self.current_mode in (MineMode.MODE_A, MineMode.MODE_A_CONTINGENCY, MineMode.MODE_B):
             self.ore1_stock.lower_threshold = 0.0
-        # Fix: MODE_A typo
         if self.current_mode in (MineMode.MODE_A, MineMode.MODE_B, MineMode.MODE_B_CONTINGENCY):
             self.ore2_stock.lower_threshold = 0.0
 
@@ -207,141 +273,95 @@ class ExampleMineModel(DRSEngine):
 
     def apply_mode(self, mode: MineMode):
         self.current_mode = mode
-        self._set_rates()
-        self._set_thresholds()
+        self.update_rates()
+
+    def check_transitions(self, trigger_var=None, is_upper=True):
+        # The engine doesn't need to know the specific logic, it just asks the registry
+        next_mode = self.registry.get_next_mode(
+            self.current_mode, 
+            trigger_var, 
+            is_upper=is_upper,
+            context=self
+        )
+        if next_mode:
+            self.apply_mode(next_mode)
+            
+        # Ensure we recalculate rates and thresholds even if we didn't transition
+        self.update_rates()
 
     def is_terminating_condition_met(self) -> bool:
         c = self.config
         extraction_met = self.ore_extraction.value >= c.total_ore_to_extract
         stock_met = abs(self.ore_stock.value - c.target_ore_stock_level) < 0.001
-        time_limit = self.current_time >= c.replication_length
 
-        return (extraction_met and stock_met) or time_limit
-
-    def calculate_time_to_next_threshold(self) -> float:
-        min_dt = math.inf
-        self.next_event_trigger = None
-        self.next_event_is_upper = True
-
-        # Need to recalculate thresholds since variables changed values
-        self._set_thresholds()
-
-        for var in self.variables:
-            dt_for_var = math.inf
-            is_upper = True
-
-            if var.rate > 0 and hasattr(var, "upper_threshold"):
-                dt_for_var = (var.upper_threshold - var.value) / var.rate
-            elif var.rate < 0 and hasattr(var, "lower_threshold"):
-                dt_for_var = (var.value - var.lower_threshold) / abs(var.rate)
-                is_upper = False
-
-            if 1e-9 < dt_for_var < min_dt:
-                min_dt = dt_for_var
-                self.next_event_trigger = var
-                self.next_event_is_upper = is_upper
-
-        if min_dt == math.inf:
-            return 1.0
-
-        return min_dt
-
-    def check_and_trigger_thresholds(self):
-        var = self.next_event_trigger
-        is_upper = self.next_event_is_upper
-
-        # 1. Timers
-        if var == self.time_executed_campaign_shutdown and is_upper:
-            self.time_executed_campaign_shutdown.reset()
-            if self.current_mode != MineMode.SHUTDOWN:
-                self.apply_mode(MineMode.SHUTDOWN)
-            else:
-                # Coming out of shutdown
-                if self.ore2_stock.value > self.config.critical_ore2_level:
-                    if self.ore_stock.value <= self.config.target_ore_stock_level:
-                        self.apply_mode(MineMode.MODE_A)
-                    else:
-                        self.apply_mode(MineMode.MODE_A_MINE_SURGING)
-                else:
-                    if self.ore_stock.value <= self.config.target_ore_stock_level:
-                        self.apply_mode(MineMode.MODE_B)
-                    else:
-                        self.apply_mode(MineMode.MODE_B_MINE_SURGING)
-
-        elif var == self.time_executed_contingency and is_upper:
-            self.time_executed_contingency.reset()
-            if self.current_mode == MineMode.MODE_A_CONTINGENCY:
-                self.apply_mode(MineMode.MODE_A)
-            elif self.current_mode == MineMode.MODE_B_CONTINGENCY:
-                self.apply_mode(MineMode.MODE_B)
-
-        # 2. Levels (Lower)
-        elif var == self.ore_stock and not is_upper:
-            if self.current_mode == MineMode.MODE_A_MINE_SURGING:
-                self.apply_mode(MineMode.MODE_A)
-            elif self.current_mode == MineMode.MODE_B_MINE_SURGING:
-                self.apply_mode(MineMode.MODE_B)
-
-        elif var == self.ore1_stock and not is_upper:
-            if self.current_mode in (MineMode.MODE_A, MineMode.MODE_A_CONTINGENCY):
-                self.apply_mode(MineMode.MODE_A_MINE_SURGING)
-            elif self.current_mode == MineMode.MODE_B:
-                self.apply_mode(MineMode.MODE_B_CONTINGENCY)
-
-        elif var == self.ore2_stock and not is_upper:
-            if self.current_mode == MineMode.MODE_A:
-                self.apply_mode(MineMode.MODE_A_CONTINGENCY)
-            elif self.current_mode in (MineMode.MODE_B, MineMode.MODE_B_CONTINGENCY):
-                self.apply_mode(MineMode.MODE_B_MINE_SURGING)
-
-        # 3. Levels (Upper)
-        elif var == self.ore_extraction and is_upper:
-            if abs(self.ore_extraction.value - self.config.ore_to_be_extracted_during_warming_period) < 0.1:
-                # End of warmup - reset all mode timers
-                self.time_mode_a.reset()
-                self.time_mode_a_contingency.reset()
-                self.time_mode_a_surging.reset()
-                self.time_mode_b.reset()
-                self.time_mode_b_contingency.reset()
-                self.time_mode_b_surging.reset()
-                self.time_shutdown.reset()
-
-        elif var == self.ore_extracted_from_current_parcel and is_upper:
-            self._generate_next_parcel()
-
-        # Recalculate rates/thresholds
-        self._set_rates()
-        self._set_thresholds()
+        return extraction_met and stock_met
 
     def _generate_next_parcel(self):
+        c = self.config
         self.ore_extracted_from_current_parcel.value = 0.0
-        self.mass_of_current_parcel = random.uniform(self.min_ore_mass, self.max_ore_mass)
+        self.mass_of_current_parcel = random.uniform(c.min_ore_mass, c.max_ore_mass)
 
         if self.next_parcel_is_new_facies:
-            if self.std_dev_new_facies != 0:
-                val = random.gauss(self.mean_grade_new_facies, self.std_dev_new_facies)
+            if c.std_dev_new_facies != 0:
+                val = random.gauss(c.mean_grade_new_facies, c.std_dev_new_facies)
             else:
-                val = self.mean_grade_new_facies
+                val = c.mean_grade_new_facies
             self.percentage_of_ore2 = max(val, 0.0)
         else:
-            val = self.percentage_of_ore2 + self.variation_same_facies * random.uniform(-1, 1)
+            val = self.percentage_of_ore2 + c.variation_same_facies * random.uniform(-1, 1)
             self.percentage_of_ore2 = max(val, 0.0)
 
-        self.next_parcel_is_new_facies = random.random() <= self.prob_new_facies
+        self.next_parcel_is_new_facies = random.random() <= c.prob_new_facies
 
-    def record_statistics(self):
-        self.telemetry.snapshot(self.current_time)
+    def record_statistics(self, current_time: float):
+        self.telemetry.snapshot(current_time)
         self.telemetry.history[-1]["current_mode"] = self.current_mode.value
+
+    def print_statistics(self):
+        print("\n--- Output Statistics ---")
+        
+        # Calculate Total Time
+        total_time = (
+            self.time_mode_a.value + self.time_mode_a_contingency.value + self.time_mode_a_surging.value +
+            self.time_mode_b.value + self.time_mode_b_contingency.value + self.time_mode_b_surging.value +
+            self.time_shutdown.value
+        )
+        
+        if total_time > 0:
+            print(f"PortionOfTimeInModeA: {self.time_mode_a.value / total_time:.4f}")
+            print(f"PortionOfTimeInModeAContingency: {self.time_mode_a_contingency.value / total_time:.4f}")
+            print(f"PortionOfTimeInModeAMineSurging: {self.time_mode_a_surging.value / total_time:.4f}")
+            print(f"PortionOfTimeInModeB: {self.time_mode_b.value / total_time:.4f}")
+            print(f"PortionOfTimeInModeBContingency: {self.time_mode_b_contingency.value / total_time:.4f}")
+            print(f"PortionOfTimeInModeBMineSurging: {self.time_mode_b_surging.value / total_time:.4f}")
+            print(f"PortionOfTimeInShutdown: {self.time_shutdown.value / total_time:.4f}")
+        else:
+            print("Total time is 0. Cannot calculate mode portions.")
+
+        # Calculate Throughput
+        active_time = total_time - self.time_shutdown.value
+        if active_time > 0:
+            throughput = (self.ore_extraction.value - self.config.ore_to_be_extracted_during_warming_period) / active_time
+            print(f"Throughput: {throughput:.4f} tons/day")
+        else:
+            print("Active time is 0. Cannot calculate throughput.")
 
 
 if __name__ == "__main__":
     import matplotlib.pyplot as plt
+    # Ensure reproducibility for the example to guarantee it runs exactly the same
+    random.seed(42)
 
     config = MiningDRSConfig(
         replication_length=99999.0,
     )
     sim = ExampleMineModel(config)
-    sim.run()
+    
+    # Engine is pure and acts on the module
+    engine = DRSEngine(sim)
+    engine.run(max_time=config.replication_length)
+    
+    sim.print_statistics()
 
     df = sim.telemetry.to_dataframe()
 
@@ -372,7 +392,6 @@ if __name__ == "__main__":
     ax1.set_title("Modes Plot", fontsize=14, pad=15)
     ax1.set_xlabel("Time (Days)", fontsize=12)
     ax1.set_ylabel("Mode State", fontsize=12)
-    ax1.set_xlim(0, 1000)
     ax1.set_ylim(0, 4)
     ax1.set_yticks([0, 1, 2, 3, 4])
     ax1.legend(loc='upper right', bbox_to_anchor=(1, 1.1), ncol=3, frameon=True)
@@ -388,7 +407,6 @@ if __name__ == "__main__":
     ax2.set_title("Ore Level Plot", fontsize=14, pad=15)
     ax2.set_xlabel("Time (Days)", fontsize=12)
     ax2.set_ylabel("Ore Level (Thousands of Tons)", fontsize=12)
-    ax2.set_xlim(0, 1000)
     ax2.set_ylim(0, 80)
     ax2.set_yticks([0, 10, 20, 30, 40, 50, 60, 70, 80])
     ax2.legend(loc='upper right', bbox_to_anchor=(1, 1.1), ncol=3, frameon=True)

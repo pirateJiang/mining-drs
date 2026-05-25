@@ -1,58 +1,86 @@
-from abc import ABC, abstractmethod
+import math
+from typing import Tuple, Optional
+from .variables import Variable
+from .module import Module
 
-
-class DRSEngine(ABC):
+class DRSEngine:
     """
-    Base class for DRS simulation engines.
+    The runner that manages the external simulation loop.
+    It takes a DRS module, steps time forward to the next threshold,
+    and asks the module to process transitions.
     """
 
-    def __init__(self):
+    def __init__(self, model: Module):
+        self.model = model
         self.current_time = 0.0
-        self.variables = []
 
-    def run(self):
+    def run(self, max_time: Optional[float] = None):
         """The main simulation loop."""
-        self.initialize_state()  # Island 1
+        
+        # Initialize state if the model has a custom initialization method
+        if hasattr(self.model, "initialize_state"):
+            self.model.initialize_state()
 
-        while not self.is_terminating_condition_met():
-            dt = self.calculate_time_to_next_threshold()  # Island 2
+        while True:
+            # Check custom terminating condition if it exists
+            if hasattr(self.model, "is_terminating_condition_met"):
+                if self.model.is_terminating_condition_met():
+                    break
+            
+            # Check standard time-based terminating condition
+            if max_time is not None and self.current_time >= max_time:
+                break
 
-            # Prevent infinite loops if dt is 0 but conditions aren't advancing
+            # 1. Ask the model to set its current rates based on its state
+            self.model.update_rates()
+
+            # 2. Look at all variables to find the closest threshold
+            dt, trigger_var, is_upper = self.calculate_min_dt(list(self.model.variables()))
+
+            # Prevent infinite loops
             if dt < 0:
                 raise ValueError("Time delta (dt) cannot be negative.")
 
-            self.advance_time(dt)  # Island 3
-            self.check_and_trigger_thresholds()  # Island 4
-            self.record_statistics()  # Island 5
-
-    @abstractmethod
-    def initialize_state(self):
-        """Island 1: Set up initial variables, levels, timers, and trackers."""
-        pass
-
-    @abstractmethod
-    def is_terminating_condition_met(self) -> bool:
-        """Check if the simulation should stop (e.g., max time reached)."""
-        pass
-
-    @abstractmethod
-    def calculate_time_to_next_threshold(self) -> float:
-        """Island 2: Determine the time step (dt) to the next event/threshold."""
-        pass
-
-    def advance_time(self, dt: float):
-        """Island 3: Update levels and internal clocks by dt."""
-        self.current_time += dt
-        for var in self.variables:
-            if hasattr(var, "update"):
+            # 3. Advance time
+            self.current_time += dt
+            for var in self.model.variables():
                 var.update(dt)
 
-    @abstractmethod
-    def check_and_trigger_thresholds(self):
-        """Island 4: Evaluate condition changes and execute triggered logic."""
-        pass
+            # 4. Ask the model if any discrete transitions trigger
+            self.model.check_transitions(trigger_var, is_upper)
 
-    @abstractmethod
-    def record_statistics(self):
-        """Island 5: Log metrics for output reporting."""
-        pass
+            # 5. Record statistics
+            if hasattr(self.model, "record_statistics"):
+                self.model.record_statistics(self.current_time)
+            elif hasattr(self.model, "telemetry"):
+                if hasattr(self.model.telemetry, "snapshot"):
+                    self.model.telemetry.snapshot(self.current_time)
+
+    def calculate_min_dt(self, variables: list[Variable]) -> Tuple[float, Optional[Variable], bool]:
+        """
+        Determine the time step (dt) to the next event/threshold.
+        Returns a tuple of (min_dt, trigger_var, is_upper).
+        """
+        min_dt = math.inf
+        trigger_var = None
+        is_upper = True
+
+        for var in variables:
+            dt_for_var = math.inf
+            var_is_upper = True
+
+            if var.rate > 0:
+                dt_for_var = (var.upper_threshold - var.value) / var.rate
+            elif var.rate < 0:
+                dt_for_var = (var.value - var.lower_threshold) / abs(var.rate)
+                var_is_upper = False
+
+            if 1e-9 < dt_for_var < min_dt:
+                min_dt = dt_for_var
+                trigger_var = var
+                is_upper = var_is_upper
+
+        if min_dt == math.inf:
+            return 1.0, None, True
+
+        return min_dt, trigger_var, is_upper

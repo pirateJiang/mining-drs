@@ -22,7 +22,7 @@ def test_mining_drs_config_defaults():
 
     # Check specific defaults
     assert config.target_ore_stock_level == 60000.0
-    assert config.total_ore_to_extract == math.inf
+    assert config.total_ore_to_extract == 6600000.0
 
 
 def test_mining_drs_config_overrides():

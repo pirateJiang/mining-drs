@@ -2,14 +2,7 @@ from enum import Enum
 from typing import Callable, Dict, Any
 
 
-class MiningMode(Enum):
-    """Enumeration of operational modes for a mining simulation."""
-
-    NORMAL = "Normal"
-    MAINTENANCE = "Maintenance"
-    CONTINGENCY = "Contingency"
-
-
+# TODO: what does this actually do? like where is it used? why is it useful? is it too specific?
 class SequenceRegistry:
     """
     Maps specific modes (Enums) to Python callable functions, replacing
@@ -34,8 +27,10 @@ class SequenceRegistry:
 
         # Call the python function cleanly
         return self.sequences[mode](context)
-        
-    def register_transition(self, current_mode: Enum, next_mode: Any, trigger: Any, is_upper: bool = True):
+
+    def register_transition(
+        self, current_mode: Enum, next_mode: Any, trigger: Any, is_upper: bool = True
+    ):
         """
         Register a transition from a current mode to a next mode based on a trigger.
         next_mode can be an Enum or a Callable that returns an Enum.
@@ -43,7 +38,13 @@ class SequenceRegistry:
         key = (current_mode, trigger, is_upper)
         self.transitions[key] = next_mode
 
-    def get_next_mode(self, current_mode: Enum, trigger: Any, is_upper: bool = True, context: Any = None):
+    def get_next_mode(
+        self,
+        current_mode: Enum,
+        trigger: Any,
+        is_upper: bool = True,
+        context: Any = None,
+    ):
         """
         Get the next mode for a given trigger in the current mode.
         """

@@ -1,10 +1,9 @@
 pyproject.toml
 src/mining_drs/__init__.py
 src/mining_drs/config.py
-src/mining_drs/earth.py
 src/mining_drs/engine.py
 src/mining_drs/modes.py
-src/mining_drs/parser.py
+src/mining_drs/module.py
 src/mining_drs/plot.py
 src/mining_drs/telemetry.py
 src/mining_drs/variables.py
@@ -14,10 +13,7 @@ src/mining_drs.egg-info/dependency_links.txt
 src/mining_drs.egg-info/requires.txt
 src/mining_drs.egg-info/top_level.txt
 tests/test_config.py
-tests/test_earth.py
 tests/test_engine.py
 tests/test_modes.py
-tests/test_parser.py
-tests/test_plot.py
 tests/test_telemetry.py
 tests/test_variables.py

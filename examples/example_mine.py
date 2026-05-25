@@ -315,7 +315,7 @@ class ExampleMineModel(drs.Module):
 
     def record_statistics(self, current_time: float):
         self.telemetry.snapshot(current_time)
-        self.telemetry.history[-1]["current_mode"] = self.current_mode.value
+        self.telemetry.record_custom("current_mode", self.current_mode.value)
 
     def print_statistics(self):
         print("\n--- Output Statistics ---")
@@ -381,34 +381,26 @@ if __name__ == "__main__":
     df["Ore 1 Stockpile Level"] = df["Ore1Stock_Level"] / 1000.0
     df["Ore 2 Stockpile Level"] = df["Ore2Stock_Level"] / 1000.0
 
-    plt.style.use('seaborn-v0_8-whitegrid')
-
-    # Plot 1: Modes Plot
-    fig1, ax1 = plt.subplots(figsize=(10, 6))
-    ax1.step(df["time"], df["Mode A"], where='post', label="Mode A", linewidth=2)
-    ax1.step(df["time"], df["Mode B"], where='post', label="Mode B", linewidth=2)
-    ax1.step(df["time"], df["Shutdown"], where='post', label="Shutdown", linewidth=2)
+    from mining_drs.plot import plot_time_series
     
-    ax1.set_title("Modes Plot", fontsize=14, pad=15)
-    ax1.set_xlabel("Time (Days)", fontsize=12)
-    ax1.set_ylabel("Mode State", fontsize=12)
-    ax1.set_ylim(0, 4)
-    ax1.set_yticks([0, 1, 2, 3, 4])
-    ax1.legend(loc='upper right', bbox_to_anchor=(1, 1.1), ncol=3, frameon=True)
-    fig1.tight_layout()
+    fig1 = plot_time_series(
+        df,
+        y_columns=["Mode A", "Mode B", "Shutdown"],
+        title="Modes Plot",
+        y_label="Mode State",
+        is_step=True,
+    )
+    fig1.axes[0].set_ylim(0, 4)
+    fig1.axes[0].set_yticks([0, 1, 2, 3, 4])
     fig1.savefig("Modes_Plot.png")
 
-    # Plot 2: Ore Level Plot
-    fig2, ax2 = plt.subplots(figsize=(10, 6))
-    ax2.plot(df["time"], df["Total Ore Stockpile Level"], label="Total Ore Stockpile Level", linewidth=2)
-    ax2.plot(df["time"], df["Ore 1 Stockpile Level"], label="Ore 1 Stockpile Level", linewidth=2)
-    ax2.plot(df["time"], df["Ore 2 Stockpile Level"], label="Ore 2 Stockpile Level", color="pink", linewidth=2)
-    
-    ax2.set_title("Ore Level Plot", fontsize=14, pad=15)
-    ax2.set_xlabel("Time (Days)", fontsize=12)
-    ax2.set_ylabel("Ore Level (Thousands of Tons)", fontsize=12)
-    ax2.set_ylim(0, 80)
-    ax2.set_yticks([0, 10, 20, 30, 40, 50, 60, 70, 80])
-    ax2.legend(loc='upper right', bbox_to_anchor=(1, 1.1), ncol=3, frameon=True)
-    fig2.tight_layout()
+    fig2 = plot_time_series(
+        df,
+        y_columns=["Total Ore Stockpile Level", "Ore 1 Stockpile Level", "Ore 2 Stockpile Level"],
+        title="Ore Level Plot",
+        y_label="Ore Level (Thousands of Tons)",
+        is_step=False,
+    )
+    fig2.axes[0].set_ylim(0, 80)
+    fig2.axes[0].set_yticks([0, 10, 20, 30, 40, 50, 60, 70, 80])
     fig2.savefig("Ore_Level_Plot.png")

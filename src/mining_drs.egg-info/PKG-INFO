@@ -1,4 +1,4 @@
-Metadata-Version: 2.4
+Metadata-Version: 2.1
 Name: mining_drs
 Version: 0.1.0
 Summary: A dynamic simulation engine for mining operations.
@@ -6,6 +6,6 @@ Author: mining-drs Team
 Requires-Python: >=3.8
 Requires-Dist: pandas>=1.0
 Requires-Dist: numpy>=1.20
-Requires-Dist: plotly>=5.0
+Requires-Dist: matplotlib>=3.5
 Provides-Extra: dev
 Requires-Dist: pytest>=7.0; extra == "dev"

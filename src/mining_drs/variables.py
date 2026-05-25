@@ -1,5 +1,6 @@
 import math
 
+
 class Variable:
     """Base class for all domain variables."""
 
@@ -31,9 +32,3 @@ class Timer(Level):
     def reset(self):
         """Reset the timer to 0.0."""
         self.value = 0.0
-
-
-class Tracker(Variable):
-    """A variable used only for recording output statistics. It does not affect simulation logic."""
-
-    pass

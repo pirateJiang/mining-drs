@@ -1,5 +1,5 @@
 import pytest
-from mining_drs.variables import Variable, Level, Timer, Tracker
+from mining_drs.variables import Variable, Level, Timer
 
 
 def test_variable_initialization():
@@ -38,9 +38,3 @@ def test_timer_countdown():
     timer = Timer("countdown", initial_value=10.0, rate=-1.0)
     timer.update(3.0)
     assert timer.value == 7.0
-
-
-def test_tracker_initialization():
-    tracker = Tracker("total_mined", 500.0)
-    assert tracker.name == "total_mined"
-    assert tracker.value == 500.0

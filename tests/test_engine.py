@@ -1,12 +1,20 @@
 import pytest
+import math
 from mining_drs.engine import DRSEngine
+from mining_drs.module import Module
+from mining_drs.variables import Level
 
-class MockSimulationEngine(DRSEngine):
+class MockModule(Module):
     def __init__(self, target_ticks: int):
         super().__init__()
         self.target_ticks = target_ticks
         self.current_ticks = 0
         self.log = []
+        self.var = Level("dummy", 0.0, 1.0)
+        self.var.upper_threshold = 1.0
+
+    def variables(self):
+        yield self.var
 
     def initialize_state(self):
         self.log.append("init")
@@ -14,55 +22,49 @@ class MockSimulationEngine(DRSEngine):
     def is_terminating_condition_met(self) -> bool:
         return self.current_ticks >= self.target_ticks
 
-    def calculate_time_to_next_threshold(self) -> float:
-        self.log.append("calc_dt")
-        return 1.0
+    def update_rates(self):
+        self.log.append("update_rates")
 
-    def advance_time(self, dt: float):
-        self.log.append("advance")
-        super().advance_time(dt)
-
-    def check_and_trigger_thresholds(self):
+    def check_transitions(self, trigger_var, is_upper):
         self.log.append("check")
+        # reset for next tick
+        self.var.value = 0.0
 
-    def record_statistics(self):
+    def record_statistics(self, current_time):
         self.log.append("record")
         self.current_ticks += 1
 
-
 def test_engine_execution_order():
-    engine = MockSimulationEngine(target_ticks=1)
+    model = MockModule(target_ticks=1)
+    engine = DRSEngine(model)
     engine.run()
     
     expected_log = [
         "init",
-        "calc_dt",
-        "advance",
+        "update_rates",
         "check",
         "record"
     ]
-    assert engine.log == expected_log
+    assert model.log == expected_log
     assert engine.current_time == 1.0
 
-
 def test_engine_multiple_ticks():
-    engine = MockSimulationEngine(target_ticks=3)
+    model = MockModule(target_ticks=3)
+    engine = DRSEngine(model)
     engine.run()
     
     assert engine.current_time == 3.0
-    assert engine.current_ticks == 3
-    # Check that init happens exactly once
-    assert engine.log.count("init") == 1
-    # Check that the loop runs 3 times
-    assert engine.log.count("advance") == 3
-
+    assert model.current_ticks == 3
+    assert model.log.count("init") == 1
+    assert model.log.count("update_rates") == 3
 
 def test_engine_negative_dt_raises_error():
-    class BadEngine(MockSimulationEngine):
-        def calculate_time_to_next_threshold(self) -> float:
-            return -1.0
-            
-    engine = BadEngine(target_ticks=1)
+    model = MockModule(target_ticks=1)
+    engine = DRSEngine(model)
     
-    with pytest.raises(ValueError, match="Time delta \\(dt\\) cannot be negative"):
+    # Mock the engine's dt calculation to force a negative dt
+    engine.calculate_min_dt = lambda variables: (-1.0, None, True)
+    
+    with pytest.raises(ValueError, match="Time delta \\(dt\\) cannot be negative."):
         engine.run()
+

@@ -1,9 +1,4 @@
-try:
-    import pandas as pd
-
-    PANDAS_AVAILABLE = True
-except ImportError:
-    PANDAS_AVAILABLE = False
+import pandas as pd
 
 
 class Telemetry:
@@ -12,12 +7,12 @@ class Telemetry:
     Provides methods to export the recorded history into analysis-ready formats.
     """
 
-    def __init__(self, engine):
+    def __init__(self, model):
         """
-        Initializes the telemetry system attached to a specific engine.
-        The engine is expected to have a `variables` attribute (a list of Variable objects).
+        Initializes the telemetry system attached to a specific model.
+        The model is expected to provide a `variables()` method (an iterator of Variable objects).
         """
-        self.engine = engine
+        self.model = model
         self.history = []
 
     def snapshot(self, current_time: float):
@@ -26,13 +21,8 @@ class Telemetry:
         """
         state = {"time": current_time}
 
-        # Dynamically grab the value of every tracked variable
-        if callable(getattr(self.engine, "variables", None)):
-            for variable in self.engine.variables():
-                state[variable.name] = variable.value
-        elif hasattr(self.engine, "variables"):
-            for variable in self.engine.variables:
-                state[variable.name] = variable.value
+        for variable in self.model.variables():
+            state[variable.name] = variable.value
 
         self.history.append(state)
 
@@ -47,3 +37,12 @@ class Telemetry:
         Returns the raw list of dictionary states.
         """
         return self.history
+
+    def record_custom(self, key: str, value: any):
+        """
+        Records a custom key-value pair to the most recent snapshot in the history.
+        Raises an error if no snapshot has been taken yet.
+        """
+        if not self.history:
+            raise IndexError("Cannot record custom data: No snapshots have been taken yet.")
+        self.history[-1][key] = value

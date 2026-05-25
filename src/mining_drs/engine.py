@@ -17,15 +17,13 @@ class DRSEngine:
     def run(self, max_time: Optional[float] = None):
         """The main simulation loop."""
         
-        # Initialize state if the model has a custom initialization method
-        if hasattr(self.model, "initialize_state"):
-            self.model.initialize_state()
+        # Initialize state via standard OO contract
+        self.model.initialize_state()
 
         while True:
-            # Check custom terminating condition if it exists
-            if hasattr(self.model, "is_terminating_condition_met"):
-                if self.model.is_terminating_condition_met():
-                    break
+            # Check standard OO contract terminating condition
+            if self.model.is_terminating_condition_met():
+                break
             
             # Check standard time-based terminating condition
             if max_time is not None and self.current_time >= max_time:
@@ -35,7 +33,8 @@ class DRSEngine:
             self.model.update_rates()
 
             # 2. Look at all variables to find the closest threshold
-            dt, trigger_var, is_upper = self.calculate_min_dt(list(self.model.variables()))
+            current_variables = list(self.model.variables())
+            dt, trigger_var, is_upper = self.calculate_min_dt(current_variables)
 
             # Prevent infinite loops
             if dt < 0:
@@ -43,18 +42,14 @@ class DRSEngine:
 
             # 3. Advance time
             self.current_time += dt
-            for var in self.model.variables():
+            for var in current_variables:
                 var.update(dt)
 
             # 4. Ask the model if any discrete transitions trigger
             self.model.check_transitions(trigger_var, is_upper)
 
-            # 5. Record statistics
-            if hasattr(self.model, "record_statistics"):
-                self.model.record_statistics(self.current_time)
-            elif hasattr(self.model, "telemetry"):
-                if hasattr(self.model.telemetry, "snapshot"):
-                    self.model.telemetry.snapshot(self.current_time)
+            # 5. Record statistics blindly via standard OO contract hook
+            self.model.record_statistics(self.current_time)
 
     def calculate_min_dt(self, variables: list[Variable]) -> Tuple[float, Optional[Variable], bool]:
         """

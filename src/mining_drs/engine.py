@@ -74,8 +74,9 @@ class DRSEngine:
                 dt_for_var = (var.value - var.lower_threshold) / abs(var.rate)
                 var_is_upper = False
 
-            if 1e-9 < dt_for_var < min_dt:
-                min_dt = dt_for_var
+            # Allow 0.0 dt to prevent skipping imminent events
+            if -1e-12 <= dt_for_var < min_dt:
+                min_dt = max(0.0, dt_for_var)
                 trigger_var = var
                 is_upper = var_is_upper
 

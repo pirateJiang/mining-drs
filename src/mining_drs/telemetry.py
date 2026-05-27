@@ -1,10 +1,14 @@
 import pandas as pd
+from typing import Callable, Dict, Any
+from .module import Module
 
 
 class Telemetry:
     """
     Automates the recording of all simulation variables over time.
     Provides methods to export the recorded history into analysis-ready formats.
+
+    NOTE: this is probably what we should be using to "make" our observations. The telemetry data or sensor data in a way. For MDP just track all variables. For POMDP only some of them.
     """
 
     def __init__(self, model):
@@ -14,6 +18,29 @@ class Telemetry:
         """
         self.model = model
         self.history = []
+        self.tracked_vars = [
+            var.name for var in self.model.variables()
+        ]  # default to all variables
+        self.derived_metrics: Dict[str, Callable] = {}
+
+    def set_tracked_vars(self, var_names: list[str]):
+        """Set the variables to track.
+
+        Args:
+            var_names (list): A list of variable names to track.
+        """
+        self.tracked_vars = var_names
+
+    def register_metric(
+        self, name: str, calc_fn: Callable[[float, Module, dict, list], float]
+    ):
+        """Register a custom metric. For things like NPV
+
+        Args:
+            name (str): The name of the metric.
+            calc_fn (Callable): The metric function. Signature: calc_fn(current_time, model, state, history) -> metric_value
+        """
+        self.derived_metrics[name] = calc_fn
 
     def snapshot(self, current_time: float):
         """
@@ -22,7 +49,11 @@ class Telemetry:
         state = {"time": current_time}
 
         for variable in self.model.variables():
-            state[variable.name] = variable.value
+            if variable.name in self.tracked_vars:
+                state[variable.name] = variable.value
+
+        for name, func in self.derived_metrics.items():
+            state[name] = func(current_time, self.model, state, self.history)
 
         self.history.append(state)
 
@@ -31,21 +62,3 @@ class Telemetry:
         Converts the entire simulation history into a Pandas DataFrame for plotting/analysis.
         """
         return pd.DataFrame(self.history)
-
-    def get_raw_history(self) -> list:
-        """
-        Returns the raw list of dictionary states.
-        """
-        return self.history
-
-    # TODO: do we still need this?
-    def record_custom(self, key: str, value: any):
-        """
-        Records a custom key-value pair to the most recent snapshot in the history.
-        Raises an error if no snapshot has been taken yet.
-        """
-        if not self.history:
-            raise IndexError(
-                "Cannot record custom data: No snapshots have been taken yet."
-            )
-        self.history[-1][key] = value

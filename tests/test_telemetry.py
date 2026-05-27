@@ -61,17 +61,3 @@ def test_telemetry_to_dataframe():
     assert isinstance(df, pd.DataFrame)
     assert len(df) == 1
     assert list(df.columns) == ["time", "ore_stock", "runtime", "trucks_dispatched"]
-
-
-def test_telemetry_record_custom():
-    engine = MockEngine()
-    telemetry = Telemetry(engine)
-    
-    with pytest.raises(IndexError, match="Cannot record custom data: No snapshots have been taken yet."):
-        telemetry.record_custom("test_key", "test_value")
-
-    telemetry.snapshot(current_time=0.0)
-    telemetry.record_custom("test_key", "test_value")
-    
-    history = telemetry.get_raw_history()
-    assert history[-1]["test_key"] == "test_value"

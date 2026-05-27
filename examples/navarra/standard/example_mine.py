@@ -7,6 +7,16 @@ from mining_drs.telemetry import Telemetry
 from mining_drs.modes import StateMachine
 
 
+# The MineMode enum defines the discrete, mutually exclusive operational states of the mining plant.
+# - MODE_A / MODE_B: Standard production modes representing different ore blending and extraction strategies.
+# - CONTINGENCY modes (A/B): Fallback states activated when a specific ore type (Ore 1 or Ore 2) is completely depleted.
+# - SURGING modes (A/B): High-throughput states triggered when the total ore stock drops dangerously low, aiming to quickly replenish it.
+# - SHUTDOWN: Planned non-productive periods representing maintenance or downtime between active production campaigns.
+
+# Mode A (Normal Operation): This is the primary, default operating state. The plant stays in Mode A logic as long as the stock of Ore 2 remains healthy (i.e., above the critical_ore2_level). In this mode, the plant processes Ore 1 and Ore 2 at its standard, preferred milling rates (mode_a_ore1_milling_rate and mode_a_ore2_milling_rate).
+# Mode B (Ore 2 Conservation/Recovery): The plant shifts to Mode B logic when the Ore 2 stock drops to a critically low level (below critical_ore2_level). When this happens, the plant changes its extraction and milling strategy to mode_b rates. This alternate strategy typically adjusts the blending ratio to put less strain on the dwindling Ore 2 stockpile, giving the mine a chance to extract and replenish it.
+
+
 class MineMode(Enum):
     MODE_A = "ModeA"
     MODE_A_CONTINGENCY = "ModeAContingency"
@@ -190,6 +200,11 @@ class MineController(drs.Module):
         # ----------------------------------------------------
         # TRANSITIONS (Command Pattern for check_transitions)
         # ----------------------------------------------------
+        # The registry defines the discrete event logic of the state machine.
+        # We register transition rules that bind a specific trigger (e.g., a timer reaching its upper bound,
+        # or a level hitting its lower bound) to a target mode or a side-effect function.
+        # Note: In this refactored version, the continuous dynamics (rate assignments) are handled via
+        # explicit if/else blocks in the `update_rates` methods, rather than being registered here.
 
         # Upper timer logic for coming out of shutdown
         def end_of_shutdown():
@@ -209,12 +224,18 @@ class MineController(drs.Module):
             self.time_executed_campaign_shutdown.reset()
             return MineMode.SHUTDOWN
 
-        def end_of_contingency_a():
+        def begin_contingency_a():
             self.time_executed_contingency.reset()
+            return MineMode.MODE_A_CONTINGENCY
+
+        def begin_contingency_b():
+            self.time_executed_contingency.reset()
+            return MineMode.MODE_B_CONTINGENCY
+
+        def end_of_contingency_a():
             return MineMode.MODE_A
 
         def end_of_contingency_b():
-            self.time_executed_contingency.reset()
             return MineMode.MODE_B
 
         # Non-mode transitions (Side effect functions)
@@ -285,22 +306,10 @@ class MineController(drs.Module):
             trigger=plant.ore_stock.lower_bound,
             target=MineMode.MODE_A,
         )
-        # NOTE: Added to prevent negative stockpiles when surging fails to produce secondary ore
-        self.registry.register_transition(
-            source=MineMode.MODE_A_MINE_SURGING,
-            trigger=plant.ore2_stock.lower_bound,
-            target=MineMode.MODE_A_CONTINGENCY,
-        )
         self.registry.register_transition(
             source=MineMode.MODE_B_MINE_SURGING,
             trigger=plant.ore_stock.lower_bound,
             target=MineMode.MODE_B,
-        )
-        # NOTE: Added to prevent negative stockpiles when surging fails to produce secondary ore
-        self.registry.register_transition(
-            source=MineMode.MODE_B_MINE_SURGING,
-            trigger=plant.ore1_stock.lower_bound,
-            target=MineMode.MODE_B_CONTINGENCY,
         )
 
         self.registry.register_transition(
@@ -316,13 +325,13 @@ class MineController(drs.Module):
         self.registry.register_transition(
             source=MineMode.MODE_B,
             trigger=plant.ore1_stock.lower_bound,
-            target=MineMode.MODE_B_CONTINGENCY,
+            target=begin_contingency_b,
         )
 
         self.registry.register_transition(
             source=MineMode.MODE_A,
             trigger=plant.ore2_stock.lower_bound,
-            target=MineMode.MODE_A_CONTINGENCY,
+            target=begin_contingency_a,
         )
         self.registry.register_transition(
             source=MineMode.MODE_B,
@@ -391,6 +400,21 @@ class ExampleMineModel(drs.Module):
         self.controller = MineController(config, self.plant)
 
         self.telemetry = Telemetry(self)
+        self.telemetry.register_metric(
+            "MassOfCurrentParcel_State",
+            lambda t, m, s, h: m.plant.mass_of_current_parcel,
+        )
+        self.telemetry.register_metric(
+            "PercentageOfOre2_State", lambda t, m, s, h: m.plant.percentage_of_ore2
+        )
+        self.telemetry.register_metric(
+            "Campaign_Shutdown_Timer",
+            lambda t, m, s, h: m.controller.time_executed_campaign_shutdown.value,
+        )
+        self.telemetry.register_metric(
+            "Contingency_Timer",
+            lambda t, m, s, h: m.controller.time_executed_contingency.value,
+        )
 
     def update_rates(self):
         self.controller.update_rates()
@@ -464,7 +488,7 @@ if __name__ == "__main__":
 
     # Ensure reproducibility for the example to guarantee it runs exactly the same
     # TODO: seed 11 shows behaviour where Total Ore Stockpile Level goes above target. how should htis be handled? stop production (ie a higher threshold? or its okay for the stockpile to go up like that?)
-    # random.seed(11)
+    random.seed(11)
 
     config = MiningDRSConfig(
         replication_length=99999.0,
@@ -478,6 +502,53 @@ if __name__ == "__main__":
     sim.print_statistics()
 
     df = sim.telemetry.to_dataframe()
+
+    # --- Mode Transition Log ---
+    print("\n--- Mode Transition Log ---")
+    df["prev_mode"] = df["current_mode"].shift(1)
+    transitions = df[(df["current_mode"] != df["prev_mode"]) & df["prev_mode"].notna()]
+
+    for idx, row in transitions.iterrows():
+        try:
+            prev = row["prev_mode"].value
+            curr = row["current_mode"].value
+        except AttributeError:
+            prev = row["prev_mode"]
+            curr = row["current_mode"]
+
+        print(f"Time: {row['time']:.2f} | Transition: {prev} -> {curr}")
+        print(
+            f"  ↳ Ore1 Stock: {row['Ore1Stock_Level']:.1f} | Ore2 Stock: {row['Ore2Stock_Level']:.1f} (Critical: {config.critical_ore2_level}) | Total Stock: {row['OreStock_Level']:.1f} (Target: {config.target_ore_stock_level})"
+        )
+        print(
+            f"  ↳ Campaign/Shutdown Timer: {row['TimeExecutedInCurrentCampaignOrShutdown_Timer']:.2f} | Contingency Timer: {row['TimeExecutedInCurrentContingencySegment_Timer']:.2f}"
+        )
+    print("---------------------------\n")
+
+    # --- Cumulative Deficit by Mode Log ---
+    import pandas as pd
+
+    dt = df["time"].diff().fillna(0)
+    actual_extraction_step = df["OreExtraction_Level"].diff().fillna(0)
+    ideal_extraction_step = dt * 6000.0
+    step_deficit = (ideal_extraction_step - actual_extraction_step).clip(lower=0)
+
+    deficit_df = pd.DataFrame(
+        {"mode": df["current_mode"].astype(str), "deficit": step_deficit}
+    )
+
+    total_deficit_by_mode = (
+        deficit_df.groupby("mode")["deficit"].sum().sort_values(ascending=False)
+    )
+
+    print("\n--- Cumulative Lost Production (Deficit) by Mode ---")
+    total_lost = total_deficit_by_mode.sum()
+    for mode, lost in total_deficit_by_mode.items():
+        mode_name = str(mode).split(".")[-1]
+        pct = (lost / total_lost * 100) if total_lost > 0 else 0
+        print(f"{mode_name}: {lost:.1f} tons ({pct:.1f}%)")
+    print(f"TOTAL: {total_lost:.1f} tons")
+    print("----------------------------------------------------\n")
 
     # Create Modes Series
     df["Mode A"] = df["current_mode"].apply(
@@ -513,30 +584,149 @@ if __name__ == "__main__":
     df["Ore 1 Stockpile Level"] = df["Ore1Stock_Level"] / 1000.0
     df["Ore 2 Stockpile Level"] = df["Ore2Stock_Level"] / 1000.0
 
-    from mining_drs.plot import plot_time_series
-
-    fig1 = plot_time_series(
-        df,
-        y_columns=["Mode A", "Mode B", "Shutdown"],
-        title="Modes Plot",
-        y_label="Mode State",
-        is_step=True,
+    from mining_drs.plot import (
+        plot_time_series,
+        plot_ore_with_modes,
+        plot_dual_axis_step,
+        plot_safety_margin,
+        plot_state_space,
+        plot_mode_distribution,
+        plot_cumulative_throughput,
+        plot_mode_dwell_times,
+        plot_normalized_deviation_violin,
+        plot_attributed_deficit,
+        plot_deficit_disparity,
+        plot_deficit_breakdown_bar,
+        plot_structural_vs_operational_deficit,
+        plot_normalized_cumulative_deficit,
+        plot_structural_vs_operational_by_mode,
+        build_dashboard,
     )
-    fig1.axes[0].set_ylim(0, 4)
-    fig1.axes[0].set_yticks([0, 1, 2, 3, 4])
-    fig1.savefig("Modes_Plot.png")
 
-    fig2 = plot_time_series(
-        df,
-        y_columns=[
-            "Total Ore Stockpile Level",
-            "Ore 1 Stockpile Level",
-            "Ore 2 Stockpile Level",
-        ],
-        title="Ore Level Plot",
-        y_label="Ore Level (Thousands of Tons)",
-        is_step=False,
+    configs = [
+        {
+            "func": plot_time_series,
+            "kwargs": {
+                "y_columns": ["Mode A", "Mode B", "Shutdown"],
+                "title": "Modes (Step)",
+                "is_step": True,
+            },
+        },
+        {
+            "func": plot_ore_with_modes,
+            "kwargs": {
+                "time_col": "time",
+                "ore_cols": ["OreStock_Level", "Ore1Stock_Level", "Ore2Stock_Level"],
+                "mode_col": "current_mode",
+                "campaign_split_mode": MineMode.SHUTDOWN,
+                "title": "Ore Stockpiles & Campaigns",
+                "hlines": [
+                    {
+                        "y": 60000,
+                        "color": "black",
+                        "linestyle": "--",
+                        "linewidth": 1.5,
+                        "alpha": 0.7,
+                        "label": "Target Total (60k)",
+                    },
+                    {
+                        "y": 20400,
+                        "color": "red",
+                        "linestyle": ":",
+                        "linewidth": 2,
+                        "alpha": 0.8,
+                        "label": "Critical Ore 2 (20.4k)",
+                    },
+                ],
+            },
+        },
+        {
+            "func": plot_dual_axis_step,
+            "kwargs": {
+                "y1_col": "MassOfCurrentParcel_State",
+                "y2_col": "PercentageOfOre2_State",
+                "y1_label": "Parcel Mass (tons)",
+                "y2_label": "Grade (% Ore 2)",
+                "title": "Current Parcel Properties",
+            },
+        },
+        {
+            "func": plot_safety_margin,
+            "kwargs": {
+                "level_col": "Ore1Stock_Level",
+                "constraint_value": 0.0,
+                "constraint_type": "lower",
+                "title": "Safety Margin: Ore 1 Distance to Floor",
+                "danger_threshold": 1000.0,
+            },
+        },
+        {
+            "func": plot_safety_margin,
+            "kwargs": {
+                "level_col": "Ore2Stock_Level",
+                "constraint_value": 0.0,
+                "constraint_type": "lower",
+                "title": "Safety Margin: Ore 2 Distance to Floor",
+                "danger_threshold": 1000.0,
+            },
+        },
+        {
+            "func": plot_mode_distribution,
+            "kwargs": {
+                "mode_col": "current_mode",
+                "time_col": "time",
+                "title": "Mode Distribution (% of Time Spent)",
+            },
+        },
+        {
+            "func": plot_mode_dwell_times,
+            "kwargs": {
+                "time_col": "time",
+                "mode_col": "current_mode",
+                "title": "Mode Stability (Dwell Times)",
+            },
+        },
+        {
+            "func": plot_normalized_deviation_violin,
+            "kwargs": {
+                "title": "Stockpile Deviation Variance (Violin)",
+            },
+        },
+        {
+            "func": plot_attributed_deficit,
+            "kwargs": {
+                "time_col": "time",
+                "mode_col": "current_mode",
+                "extraction_col": "OreExtraction_Level",
+                "ideal_rate_per_day": 6000.0,
+                "title": "Cumulative Production Deficit by Mode",
+            },
+        },
+        {
+            "func": plot_deficit_disparity,
+            "kwargs": {
+                "title": "Mode Efficiency (Time Spent vs. Deficit Caused)",
+            },
+        },
+        {
+            "func": plot_deficit_breakdown_bar,
+            "kwargs": {},
+        },
+        {
+            "func": plot_structural_vs_operational_deficit,
+            "kwargs": {},
+        },
+        {
+            "func": plot_normalized_cumulative_deficit,
+            "kwargs": {},
+        },
+        {
+            "func": plot_structural_vs_operational_by_mode,
+            "kwargs": {},
+        },
+    ]
+
+    fig_comp = build_dashboard(
+        df, configs, title="Comprehensive Mine Diagnostics", figsize=(18, 69)
     )
-    fig2.axes[0].set_ylim(0, 80)
-    fig2.axes[0].set_yticks([0, 10, 20, 30, 40, 50, 60, 70, 80])
-    fig2.savefig("Ore_Level_Plot.png")
+    fig_comp.savefig("Comprehensive_Diagnostics_Plot.png")

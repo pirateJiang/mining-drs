@@ -97,6 +97,7 @@ def plot_ore_with_modes(
     campaign_split_mode=None,
     hlines=None,
     ax=None,
+    palette=None,
 ):
     """
     Plots one or more ore stockpile time series with color-coded mode regions
@@ -142,23 +143,17 @@ def plot_ore_with_modes(
     import matplotlib
 
     cmap = matplotlib.colormaps["tab10"]
-
-    # Hardcoded palette to ensure high contrast between specific modes
-    hardcoded_palette = {
-        "MODE_A": "#1f77b4",  # Blue
-        "MODE_A_CONTINGENCY": "#2ca02c",  # Green
-        "MODE_A_MINE_SURGING": "#9467bd",  # Purple (Highly distinct from shutdown)
-        "MODE_B": "#d62728",  # Red
-        "MODE_B_CONTINGENCY": "#ff7f0e",  # Orange
-        "MODE_B_MINE_SURGING": "#8c564b",  # Brown
-        "SHUTDOWN": "#FFD700",  # Bright Gold to POP
-    }
+    palette = palette or {}
 
     mode_colors = {}
     for i, mode in enumerate(unique_modes):
         mode_name = getattr(mode, "name", str(mode))
-        if mode_name in hardcoded_palette:
-            mode_colors[mode] = hardcoded_palette[mode_name]
+        mode_str = str(mode).split('.')[-1].upper() # Fallback for enum string representation
+        
+        if mode_name in palette:
+            mode_colors[mode] = palette[mode_name]
+        elif mode_str in palette:
+            mode_colors[mode] = palette[mode_str]
         else:
             mode_colors[mode] = cmap(i % 10)
 
@@ -654,6 +649,8 @@ def plot_mode_distribution(
     time_col="time",
     title="Mode Distribution (% Time)",
     ax=None,
+    palette=None,
+    verbose=True,
 ):
     """
     Visualizes the percentage of time spent in each mode as a horizontal bar chart.
@@ -690,25 +687,26 @@ def plot_mode_distribution(
 
     percentages = percentages.sort_values(ascending=True)
 
+    if verbose:
+        print(f"\n--- {title} ---")
+        for mode, pct in percentages.items():
+            print(f"{mode}: {pct:.1f}%")
+        print("-" * (8 + len(title)))
+
     # Try to use consistent colors
     import matplotlib
 
     cmap = matplotlib.colormaps["tab10"]
-    hardcoded_palette = {
-        "MODE_A": "#1f77b4",
-        "MODE_A_CONTINGENCY": "#2ca02c",
-        "MODE_A_MINE_SURGING": "#9467bd",
-        "MODE_B": "#d62728",
-        "MODE_B_CONTINGENCY": "#ff7f0e",
-        "MODE_B_MINE_SURGING": "#8c564b",
-        "SHUTDOWN": "#FFD700",
-    }
+    palette = palette or {}
 
     colors = []
     for mode in percentages.index:
         mode_name = getattr(mode, "name", str(mode))
-        if mode_name in hardcoded_palette:
-            colors.append(hardcoded_palette[mode_name])
+        mode_str = str(mode).split('.')[-1].upper()
+        if mode_name in palette:
+            colors.append(palette[mode_name])
+        elif mode_str in palette:
+            colors.append(palette[mode_str])
         else:
             idx = sum(ord(c) for c in str(mode)) % 10
             colors.append(cmap(idx))
@@ -799,7 +797,7 @@ def plot_cumulative_throughput(
     return ax
 
 
-def plot_mode_dwell_times(df, time_col="time", mode_col="current_mode", title="Mode Stability (Dwell Times)", ax=None):
+def plot_mode_dwell_times(df, time_col="time", mode_col="current_mode", title="Mode Stability (Dwell Times)", ax=None, verbose=True):
     """
     Identifies how long the system stays in each mode before switching.
     Crucial for diagnosing 'chattering' (rapid switching) to optimize thresholds.
@@ -822,6 +820,12 @@ def plot_mode_dwell_times(df, time_col="time", mode_col="current_mode", title="M
 
     # Filter out 0-duration blocks (instantaneous transitions)
     durations = durations[durations["duration"] > 0.01]
+
+    if verbose:
+        print(f"\n--- {title} ---")
+        dwell_summary = durations.groupby('mode')['duration'].agg(['count', 'mean', 'median', 'max'])
+        print(dwell_summary.round(2).to_string())
+        print("-" * (8 + len(title)))
 
     if ax is None:
         fig, ax = plt.subplots(figsize=(10, 6))
@@ -856,7 +860,14 @@ def plot_mode_dwell_times(df, time_col="time", mode_col="current_mode", title="M
     return ax
 
 
-def plot_normalized_deviation_violin(df, title="Stockpile Deviation Variance (Violin)", ax=None):
+def plot_normalized_deviation_violin(
+    df, 
+    title="Stockpile Deviation Variance (Violin)", 
+    target_total=60000.0,
+    target_ore1=42000.0,
+    target_ore2=18000.0,
+    ax=None
+):
     """
     Uses a Violin Plot to show distributions side-by-side without Y-axis squashing.
     """
@@ -867,9 +878,9 @@ def plot_normalized_deviation_violin(df, title="Stockpile Deviation Variance (Vi
         own_ax = False
 
     # 1. Calculate Deviations
-    dev_total = ((df["OreStock_Level"] - 60000.0) / 60000.0) * 100
-    dev_ore1 = ((df["Ore1Stock_Level"] - 42000.0) / 42000.0) * 100
-    dev_ore2 = ((df["Ore2Stock_Level"] - 18000.0) / 18000.0) * 100
+    dev_total = ((df["OreStock_Level"] - target_total) / target_total) * 100 if target_total else df["OreStock_Level"] * 0
+    dev_ore1 = ((df["Ore1Stock_Level"] - target_ore1) / target_ore1) * 100 if target_ore1 else df["Ore1Stock_Level"] * 0
+    dev_ore2 = ((df["Ore2Stock_Level"] - target_ore2) / target_ore2) * 100 if target_ore2 else df["Ore2Stock_Level"] * 0
 
     # 2. Package into a new DataFrame and Melt it for Seaborn
     dev_df = pd.DataFrame({
@@ -911,7 +922,7 @@ def plot_normalized_deviation_violin(df, title="Stockpile Deviation Variance (Vi
 
 
 def plot_attributed_deficit(df, time_col="time", mode_col="current_mode", extraction_col="OreExtraction_Level", 
-                            ideal_rate_per_day=6000.0, title="Cumulative Production Deficit by Mode", ax=None):
+                            ideal_rate_per_day=6000.0, title="Cumulative Production Deficit by Mode", ax=None, palette=None):
     """
     Calculates the instantaneous lost production at each time step and attributes it
     to the active operating mode. Plots a stacked area chart so you can see exactly
@@ -955,23 +966,14 @@ def plot_attributed_deficit(df, time_col="time", mode_col="current_mode", extrac
         cols.remove(shutdown_mode)
         cols = [shutdown_mode] + cols
         
-    hardcoded_palette = {
-        "MODE_A": "#1f77b4",  # Blue
-        "MODE_A_CONTINGENCY": "#2ca02c",  # Green
-        "MODE_A_MINE_SURGING": "#9467bd",  # Purple
-        "MODE_B": "#d62728",  # Red
-        "MODE_B_CONTINGENCY": "#ff7f0e",  # Orange
-        "MODE_B_MINE_SURGING": "#8c564b",  # Brown
-        "SHUTDOWN": "#FFD700",  # Bright Gold
-    }
-    
     import matplotlib
     cmap = matplotlib.colormaps["tab10"]
+    palette = palette or {}
     colors = []
     for idx, c in enumerate(cols):
         mode_name = str(c).split('.')[-1].upper()
-        if mode_name in hardcoded_palette:
-            colors.append(hardcoded_palette[mode_name])
+        if mode_name in palette:
+            colors.append(palette[mode_name])
         else:
             colors.append(cmap(idx % 10))
     
@@ -994,7 +996,7 @@ def plot_attributed_deficit(df, time_col="time", mode_col="current_mode", extrac
         return fig
     return ax
 
-def plot_deficit_disparity(df, time_col="time", mode_col="current_mode", extraction_col="OreExtraction_Level", ideal_rate=6000.0, title="Mode Efficiency (Time Spent vs. Deficit Caused)", ax=None):
+def plot_deficit_disparity(df, time_col="time", mode_col="current_mode", extraction_col="OreExtraction_Level", ideal_rate=6000.0, title="Mode Efficiency (Time Spent vs. Deficit Caused)", ax=None, verbose=True):
     """
     Shows the disproportionate impact of modes by comparing the % of total time spent 
     in a mode against the % of the total deficit it caused.
@@ -1018,10 +1020,14 @@ def plot_deficit_disparity(df, time_col="time", mode_col="current_mode", extract
     # 3. Aggregate by Mode
     summary = df.groupby(mode_col).agg({'dt': 'sum', 'deficit': 'sum'})
     
-    # Normalize to Percentages
     summary['% of Total Time'] = (summary['dt'] / summary['dt'].sum()) * 100
     summary['% of Total Deficit'] = (summary['deficit'] / summary['deficit'].sum()) * 100
     
+    if verbose:
+        print(f"\n--- {title} ---")
+        print(summary[['% of Total Time', '% of Total Deficit']].round(1).to_string())
+        print("-" * (8 + len(title)))
+
     # 4. Melt for Seaborn grouped bar plot
     melted = summary[['% of Total Time', '% of Total Deficit']].reset_index().melt(
         id_vars=mode_col, var_name="Metric", value_name="Percentage"
@@ -1042,7 +1048,7 @@ def plot_deficit_disparity(df, time_col="time", mode_col="current_mode", extract
         return fig
     return ax
 
-def plot_geology_impact(df, time_col="time", mode_col="current_mode", extraction_col="OreExtraction_Level", grade_col="percentage_of_ore2", ideal_rate=6000.0, ax=None):
+def plot_geology_impact(df, time_col="time", mode_col="current_mode", extraction_col="OreExtraction_Level", grade_col="percentage_of_ore2", ideal_rate=6000.0, bottleneck_mode="MODE_A", max_rate_ore1=3600, max_rate_ore2=2400, ax=None):
     """
     Plots the true Geological Bottleneck. 
     Uses forward-differencing to correctly align discrete event rates with their causal states.
@@ -1067,8 +1073,8 @@ def plot_geology_impact(df, time_col="time", mode_col="current_mode", extraction
     df['rate'] = df['dx'] / df['dt']
     df['deficit_rate'] = (ideal_rate - df['rate']).clip(lower=0)
     
-    # Filter for standard Mode A
-    mode_a = df[(df[mode_col].astype(str).str.contains("MODE_A")) & 
+    # Filter for standard Bottleneck Mode
+    mode_a = df[(df[mode_col].astype(str).str.contains(bottleneck_mode)) & 
                 (~df[mode_col].astype(str).str.contains("CONTINGENCY|SURGING"))]
     
     ore1_grade_pct = 100.0 - mode_a[grade_col]
@@ -1083,10 +1089,10 @@ def plot_geology_impact(df, time_col="time", mode_col="current_mode", extraction
     
     for pct1 in x_ideal:
         pct2 = 100.0 - pct1
-        # How much rock to extract to get 3600 Ore 1?
-        max_rate_for_ore1 = 3600 / (pct1 / 100.0)
-        # How much rock to extract to get 2400 Ore 2?
-        max_rate_for_ore2 = 2400 / (pct2 / 100.0)
+        # How much rock to extract to get Ore 1?
+        max_rate_for_ore1 = max_rate_ore1 / (pct1 / 100.0) if pct1 > 0 else float('inf')
+        # How much rock to extract to get Ore 2?
+        max_rate_for_ore2 = max_rate_ore2 / (pct2 / 100.0) if pct2 > 0 else float('inf')
         
         # The mine MUST respect the most restrictive bottleneck
         max_extraction = min(max_rate_for_ore1, max_rate_for_ore2)
@@ -1114,7 +1120,7 @@ def plot_geology_impact(df, time_col="time", mode_col="current_mode", extraction
         return fig
     return ax
 
-def plot_deficit_breakdown_bar(df, time_col="time", mode_col="current_mode", extraction_col="OreExtraction_Level", ideal_rate_per_day=6000.0, title="Final Deficit Breakdown by Mode (%)", ax=None):
+def plot_deficit_breakdown_bar(df, time_col="time", mode_col="current_mode", extraction_col="OreExtraction_Level", ideal_rate_per_day=6000.0, title="Final Deficit Breakdown by Mode (%)", ax=None, palette=None, verbose=True):
     """
     Plots a horizontal bar chart of the final cumulative deficit, normalized to 
     show the percentage contribution of each mode to the total lost tonnage.
@@ -1142,13 +1148,15 @@ def plot_deficit_breakdown_bar(df, time_col="time", mode_col="current_mode", ext
     else:
         summary_pct = summary
 
-    # 3. Colors
-    hardcoded_palette = {
-        "MODE_A": "#1f77b4", "MODE_A_CONTINGENCY": "#2ca02c", "MODE_A_MINE_SURGING": "#9467bd",
-        "MODE_B": "#d62728", "MODE_B_CONTINGENCY": "#ff7f0e", "MODE_B_MINE_SURGING": "#8c564b",
-        "SHUTDOWN": "#FFD700"
-    }
-    colors = [hardcoded_palette.get(m.upper(), "gray") for m in summary.index]
+    if verbose:
+        print(f"\n--- {title} ---")
+        for mode in summary.index[::-1]:
+            print(f"{mode}: {summary[mode]:,.1f} t ({summary_pct[mode]:.1f}%)")
+        print(f"TOTAL LOST: {total_deficit:,.1f} t")
+        print("-" * (8 + len(title)))
+
+    palette = palette or {}
+    colors = [palette.get(m.upper(), "gray") for m in summary.index]
 
     # 4. Plot Horizontal Bar
     bars = ax.barh(summary.index, summary_pct.values, color=colors, edgecolor='black', alpha=0.8)
@@ -1177,7 +1185,7 @@ def plot_deficit_breakdown_bar(df, time_col="time", mode_col="current_mode", ext
         return fig
     return ax
 
-def plot_structural_vs_operational_deficit(df, time_col="time", mode_col="current_mode", extraction_col="OreExtraction_Level", ideal_rate=6000.0, ax=None):
+def plot_structural_vs_operational_deficit(df, time_col="time", mode_col="current_mode", extraction_col="OreExtraction_Level", ideal_rate=6000.0, structural_modes=None, ax=None, verbose=True):
     """
     Separates the cumulative deficit into 'Unavoidable' (Geology/Shutdowns) 
     and 'Avoidable' (Control Logic / Blending Failures).
@@ -1196,19 +1204,27 @@ def plot_structural_vs_operational_deficit(df, time_col="time", mode_col="curren
     df['mode_str'] = df[mode_col].astype(str)
 
     # Define the Buckets
-    structural_modes = ["SHUTDOWN", "MODE_A"] # Mode A deficit is purely geological
+    structural_modes = structural_modes or []
     
     def classify_bucket(mode):
         if any(sm in mode for sm in structural_modes) and "CONTINGENCY" not in mode and "SURGING" not in mode:
             return "Structural (Unavoidable: Geology & Shutdowns)"
         else:
-            return "Operational (Avoidable: Mode B & Contingencies)"
+            return "Operational (Avoidable: Control Logic & Contingencies)"
 
     df['Deficit_Type'] = df['mode_str'].apply(classify_bucket)
     
     # Pivot and cumsum
     pivot = df.pivot_table(index=time_col, columns='Deficit_Type', values='deficit', aggfunc='sum').fillna(0)
     cumsum_pivot = pivot.cumsum()
+
+    if verbose:
+        title_str = "Structural vs. Operational Deficit"
+        print(f"\n--- {title_str} ---")
+        final_totals = cumsum_pivot.iloc[-1] if not cumsum_pivot.empty else {}
+        for deficit_type, val in final_totals.items():
+            print(f"{deficit_type}: {val:,.1f} t")
+        print("-" * (8 + len(title_str)))
 
     # Plot (Structural on bottom, Operational on top)
     cols = sorted(list(cumsum_pivot.columns), reverse=True) # Ensure Structural is first
@@ -1229,7 +1245,7 @@ def plot_structural_vs_operational_deficit(df, time_col="time", mode_col="curren
         return fig
     return ax
 
-def plot_normalized_cumulative_deficit(df, time_col="time", mode_col="current_mode", extraction_col="OreExtraction_Level", ideal_rate_per_day=6000.0, title="Deficit Composition Over Time (100% Stacked)", ax=None):
+def plot_normalized_cumulative_deficit(df, time_col="time", mode_col="current_mode", extraction_col="OreExtraction_Level", ideal_rate_per_day=6000.0, title="Deficit Composition Over Time (100% Stacked)", ax=None, palette=None):
     """
     Plots the cumulative deficit normalized to 100% at each time step.
     Shows how the composition of the plant's inefficiency evolves over time.
@@ -1261,12 +1277,8 @@ def plot_normalized_cumulative_deficit(df, time_col="time", mode_col="current_mo
         cols.remove("SHUTDOWN")
         cols = ["SHUTDOWN"] + cols
         
-    hardcoded_palette = {
-        "MODE_A": "#1f77b4", "MODE_A_CONTINGENCY": "#2ca02c", "MODE_A_MINE_SURGING": "#9467bd",
-        "MODE_B": "#d62728", "MODE_B_CONTINGENCY": "#ff7f0e", "MODE_B_MINE_SURGING": "#8c564b",
-        "SHUTDOWN": "#FFD700"
-    }
-    colors = [hardcoded_palette.get(c.upper(), "gray") for c in cols]
+    palette = palette or {}
+    colors = [palette.get(c.upper(), "gray") for c in cols]
     
     # Plot
     normalized_pivot[cols].plot.area(ax=ax, alpha=0.8, linewidth=0, color=colors)
@@ -1283,7 +1295,7 @@ def plot_normalized_cumulative_deficit(df, time_col="time", mode_col="current_mo
         return fig
     return ax
 
-def plot_structural_vs_operational_by_mode(df, time_col="time", mode_col="current_mode", extraction_col="OreExtraction_Level", ideal_rate=6000.0, title="Structural vs. Operational Deficit by Base Mode", ax=None):
+def plot_structural_vs_operational_by_mode(df, time_col="time", mode_col="current_mode", extraction_col="OreExtraction_Level", ideal_rate=6000.0, title="Structural vs. Operational Deficit by Base Mode", structural_modes=None, base_mode_mapper=None, ax=None, verbose=True):
     """
     Groups deficits by Base Mode (Mode A, Mode B, Shutdown) and stacks them by 
     whether the deficit was Structural (Unavoidable) or Operational (Avoidable via RL).
@@ -1300,19 +1312,20 @@ def plot_structural_vs_operational_by_mode(df, time_col="time", mode_col="curren
     df['deficit'] = ((df['dt'] * ideal_rate) - df['dx']).clip(lower=0)
     df['mode_str'] = df[mode_col].astype(str).apply(lambda x: x.split('.')[-1])
 
+    structural_modes = structural_modes or []
+
     # 1. Map to Base Modes
     def get_base_mode(m):
-        if "MODE_A" in m: return "Base Mode A"
-        if "MODE_B" in m: return "Base Mode B"
-        if "SHUTDOWN" in m: return "Shutdown"
-        return "Other"
+        if base_mode_mapper:
+            return base_mode_mapper(m)
+        return m.split('_CONTINGENCY')[0].split('_MINE')[0] # generic fallback
 
     # 2. Map to Deficit Type
     def get_deficit_type(m):
-        # Pure Mode A (Geology) and Shutdowns are Structural
-        if m in ["MODE_A", "SHUTDOWN"]: 
+        # Pure geological/shutdowns are Structural
+        if any(sm in m for sm in structural_modes) and "CONTINGENCY" not in m and "SURGING" not in m: 
             return "Structural (Unavoidable)"
-        # Contingencies, Surging, and Mode B are Operational
+        # Contingencies, Surging, and others are Operational
         return "Operational (Avoidable)"
 
     df['Base_Mode'] = df['mode_str'].apply(get_base_mode)
@@ -1326,9 +1339,14 @@ def plot_structural_vs_operational_by_mode(df, time_col="time", mode_col="curren
         if col not in summary.columns:
             summary[col] = 0
 
+    if verbose:
+        print(f"\n--- {title} ---")
+        print(summary.round(1).to_string())
+        print("-" * (8 + len(title)))
+
     # 4. Plot as a Stacked Bar Chart
-    # Sort order to keep it logical
-    order = ["Base Mode A", "Base Mode B", "Shutdown"]
+    # Sort order to keep it logical (if we know the keys, otherwise alphabetical)
+    order = sorted(df['Base_Mode'].unique())
     summary = summary.reindex(order).fillna(0)
 
     # Reorder columns to ensure consistent stacking order

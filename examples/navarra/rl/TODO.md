@@ -31,6 +31,12 @@ It seems like there are 3 places to optimize (from my understanding). Initial Va
 > - Look at what I have so far here and in my modular RL library. Figure out what can readily be done with minimal extra work, then build from there. A possible direction, take relevant Navarra papers and reimplement their experimental setup, use my RL framework and compare results/metrics.
 >   - This is likely the most realistic approach to make meaningful progress in a reasonable timeframe. Instead of designing a new experimental setup from scratch, leverage existing research and frameworks to validate the approach and compare performance. This allows for a clear baseline and incremental improvements. It also means I use the mining ideas from Navarra (ie metrics, scenario, target) and my RL knowledge and codebase. 
 
+> [!NOTE]
+> Im curious if for the continuous case we even need the concept of modes when using RL. If we have modes but every campaign the agent chooses the rates etc for the mode (selected by the system?) what is the point of a mode? Also does the timeframe in this case shrink compared to the high level discrete case?
+> For the discrete case it makes more sense, we are simply defining high level actions or almost even options for the agent. 
+> Additionally there is the question of the discrete case if the time interval should be each campaign or each day (the length of the shortest mode). And the question of how to deal with variable time intervals (options? just not learned ones?).
+> I don't believe generally speaking its a good idea to change your reward function necessarily (at least not for RL). I think the better formulation there is probably options, and the goal of the option is to "minimize explosive use", kind of like options of feature attainment or something like that. Changing the reward function would make the problem non-stationary and there would be a lag in adjusting. 
+> The predefined options seems better because that allows us to keep these operational modes and the different goals of the modes, and later these modes can be learned. I'm not sure that predefined options exist for the continuous case unless we are learning thresholds somehow? Each campaign the agent could output n continuous actions, one for each threshold, and those would be the thresholds used for the campaign. But the actual rates are predefined. 
 ---
 
 ## 1. What is a good reward function?

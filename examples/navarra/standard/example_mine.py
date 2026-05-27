@@ -603,6 +603,18 @@ if __name__ == "__main__":
         build_dashboard,
     )
 
+    palette = {
+        "MODE_A": "#1f77b4", 
+        "MODE_A_CONTINGENCY": "#2ca02c", 
+        "MODE_A_MINE_SURGING": "#9467bd",
+        "MODE_B": "#d62728", 
+        "MODE_B_CONTINGENCY": "#ff7f0e", 
+        "MODE_B_MINE_SURGING": "#8c564b",
+        "SHUTDOWN": "#FFD700"
+    }
+    
+    structural_modes = ["SHUTDOWN", "MODE_A"]
+
     configs = [
         {
             "func": plot_time_series,
@@ -620,6 +632,7 @@ if __name__ == "__main__":
                 "mode_col": "current_mode",
                 "campaign_split_mode": MineMode.SHUTDOWN,
                 "title": "Ore Stockpiles & Campaigns",
+                "palette": palette,
                 "hlines": [
                     {
                         "y": 60000,
@@ -676,6 +689,7 @@ if __name__ == "__main__":
                 "mode_col": "current_mode",
                 "time_col": "time",
                 "title": "Mode Distribution (% of Time Spent)",
+                "palette": palette,
             },
         },
         {
@@ -690,6 +704,9 @@ if __name__ == "__main__":
             "func": plot_normalized_deviation_violin,
             "kwargs": {
                 "title": "Stockpile Deviation Variance (Violin)",
+                "target_total": 60000.0,
+                "target_ore1": 42000.0,
+                "target_ore2": 18000.0,
             },
         },
         {
@@ -700,29 +717,43 @@ if __name__ == "__main__":
                 "extraction_col": "OreExtraction_Level",
                 "ideal_rate_per_day": 6000.0,
                 "title": "Cumulative Production Deficit by Mode",
+                "palette": palette,
             },
         },
         {
             "func": plot_deficit_disparity,
             "kwargs": {
                 "title": "Mode Efficiency (Time Spent vs. Deficit Caused)",
+                "ideal_rate": 6000.0,
             },
         },
         {
             "func": plot_deficit_breakdown_bar,
-            "kwargs": {},
+            "kwargs": {
+                "ideal_rate_per_day": 6000.0,
+                "palette": palette,
+            },
         },
         {
             "func": plot_structural_vs_operational_deficit,
-            "kwargs": {},
+            "kwargs": {
+                "ideal_rate": 6000.0,
+                "structural_modes": structural_modes,
+            },
         },
         {
             "func": plot_normalized_cumulative_deficit,
-            "kwargs": {},
+            "kwargs": {
+                "ideal_rate_per_day": 6000.0,
+                "palette": palette,
+            },
         },
         {
             "func": plot_structural_vs_operational_by_mode,
-            "kwargs": {},
+            "kwargs": {
+                "ideal_rate": 6000.0,
+                "structural_modes": structural_modes,
+            },
         },
     ]
 

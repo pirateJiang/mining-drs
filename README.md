@@ -43,6 +43,29 @@ The architecture of Mining-DRS is heavily inspired by PyTorch. Everything is org
 - **`StateMachine`**: A command-pattern registry used to define what happens when a variable hits a threshold (e.g., "When Ore Stock hits 0, transition to SURGING mode").
 - **`Telemetry`**: A built-in tracker that automatically records the value of all variables at every time step, allowing you to easily export the history to a Pandas DataFrame for plotting.
 
+### The PyTorch $\rightarrow$ DRS Dictionary
+
+Since the architecture is heavily inspired by PyTorch, you can map concepts directly:
+
+- `nn.Module` $\rightarrow$ `drs.Module` (Your physical components)
+- `nn.Conv2d` / `nn.Linear` $\rightarrow$ `drs.Level` / `drs.Timer` / `drs.State` (Generic building blocks that you piece together to build any physical system, just like neural network layers)
+- `nn.Parameter` / `Tensor` $\rightarrow$ `drs.Variable` (The underlying tensors holding your values)
+- `model.forward()` $\rightarrow$ `model.update_rates()` (Calculating the continuous dynamics based on the current state)
+- `torch.optim.Optimizer` $\rightarrow$ `OperatingMode` (Applying specific rules/updates to the state)
+- `DataLoader` / `Dataset` $\rightarrow$ `BaseOreGenerator` / `OreParcel` (Feeding data/geology to the plant)
+- `Trainer` / `Training Loop` $\rightarrow$ `DRSEngine` (Advancing time/epochs)
+- `TensorBoard` $\rightarrow$ `Telemetry` (Logging)
+
+### Parallels to Reinforcement Learning (MDP / Gym Env)
+
+The DRS framework maps naturally to a Markov Decision Process (MDP) or an OpenAI Gym Environment, making it highly suitable for Reinforcement Learning:
+
+- **State ($S$)**: The values of your `drs.Variable`s (continuous state like stockpile levels, timers) and `drs.State`s (discrete states like current modes).
+- **Action ($A$)**: The discrete mode switches or control decisions commanded by the controller/agent (e.g., switching from `MODE_A` to `MODE_B`).
+- **Environment Dynamics / Transition ($P$)**: Handled by the `DRSEngine` advancing time to the next critical event, guided by the continuous derivatives defined in `update_rates()`.
+- **`env.step(action)`**: Setting a new operational mode and allowing the `DRSEngine` to simulate until the next threshold is hit or a time horizon is reached.
+- **Reward ($R$)**: Can be calculated during or after a step based on the simulation state or `Telemetry` data (e.g., rewarding throughput, penalizing empty stockpiles or excessive mode switching).
+
 ---
 
 ## 3. How the Engine Works (The Simulation Loop)
@@ -63,79 +86,97 @@ When you call `engine.run()`, the `DRSEngine` enters a loop:
 Here is the standard workflow and best practice for creating a simulator using this framework.
 
 ### Step 1: Define Your Modes
-Create an `Enum` representing the discrete operational states of your system.
-```python
-from enum import Enum
+Subclass `OperatingMode` to represent the discrete operational states of your system. You define the physics (how rates change) and preemption rules (when to switch modes) here.
 
-class MineMode(Enum):
-    MODE_A = "Normal Operation"
-    MODE_B = "Recovery Mode"
-    SHUTDOWN = "Maintenance"
+```python
+from mining_drs.modes import OperatingMode, RequireDecision
+
+class NormalOperation(OperatingMode):
+    @property
+    def id(self) -> int: return 0
+
+    @property
+    def name(self) -> str: return "NORMAL"
+    
+    def is_valid_start(self, model) -> bool:
+        return True
+
+    def apply_dynamics(self, model):
+        # Apply the physics for this specific mode
+        model.plant.ore_stock.rate = -100.0
+
+    def check_end_conditions(self, model):
+        # E.g., if stockpile runs out, ask the controller what to do
+        if model.plant.ore_stock.value <= 0:
+            return RequireDecision()
+        return None
 ```
 
 ### Step 2: Create the Physical Plant
-Subclass `drs.Module`. Define the physical variables (Levels) in `__init__`. Override `update_rates(mode)` to define how rates change based on the current mode. Set `upper_threshold` or `lower_threshold` to limit these levels.
+Subclass `drs.Module`. Define the physical variables (Levels) in `__init__`. Override `update_rates()` to define any global, unconditional rules that always apply. For external data, pass in an iterable `loader` (similar to a `DataLoader` feeding `OreParcel`s) and let the Plant manage its own transitions to load the next batch when thresholds are hit.
 
 ```python
 from mining_drs import drs
+from mining_drs.data import BaseOreGenerator, OreParcel
+
+class GenerativeOreLoader(BaseOreGenerator):
+    def __iter__(self): return self
+    def __next__(self) -> OreParcel:
+        return OreParcel(mass=40000.0, grade=100.0)
 
 class MinePlant(drs.Module):
-    def __init__(self):
+    def __init__(self, loader: BaseOreGenerator):
         super().__init__()
-        self.ore_stock = drs.Level("OreStock", initial_value=50000.0)
+        self.loader = iter(loader)
+        self.current_parcel_mass = drs.State("parcel_mass", 0.0)
+        self.ore_extraction = drs.Level("OreExtraction", initial_value=0.0)
+        self._load_next_batch()
 
-    def update_rates(self, mode: MineMode):
-        # Set thresholds
-        self.ore_stock.upper_threshold = 100000.0
-        self.ore_stock.lower_threshold = 0.0
-        
-        # Set continuous dynamics based on the mode
-        if mode == MineMode.MODE_A:
-            self.ore_stock.rate = -100.0 # Depleting slowly
-        elif mode == MineMode.MODE_B:
-            self.ore_stock.rate = 50.0   # Replenishing
-        elif mode == MineMode.SHUTDOWN:
-            self.ore_stock.rate = 0.0    # Stopped
+    def _load_next_batch(self):
+        try:
+            parcel = next(self.loader)
+            self.current_parcel_mass.value = parcel.mass
+        except StopIteration:
+            pass
+
+    def update_rates(self):
+        # Global limits that always apply
+        self.ore_extraction.upper_threshold = self.current_parcel_mass.value
+
+    def check_transitions(self, trigger_var=None, is_upper=True):
+        # Plant handles its own physics transitions
+        if trigger_var == self.ore_extraction and is_upper:
+            self._load_next_batch()
+            self.ore_extraction.value = 0.0
+            self.ore_extraction.upper_threshold = self.current_parcel_mass.value
 ```
 
 ### Step 3: Create the Controller
-Subclass `drs.Module`. Define control variables (Timers, States) and manage the `StateMachine`.
+Subclass `drs.Module`. Define control variables (Timers, States) and handle mode switching.
 
 ```python
-from mining_drs.modes import StateMachine
-
 class MineController(drs.Module):
     def __init__(self, plant: MinePlant):
         super().__init__()
         self.plant = plant
-        self.current_mode = drs.State("current_mode", MineMode.MODE_A)
-        self.timer = drs.Timer("CampaignTimer")
-        
-        self.registry = StateMachine()
-        self._setup_transitions()
-
-    def _setup_transitions(self):
-        # When OreStock hits 0, go to MODE_B
-        self.registry.register_transition(
-            source=MineMode.MODE_A,
-            trigger=self.plant.ore_stock.lower_bound,
-            target=MineMode.MODE_B
-        )
-        # When CampaignTimer hits its limit, SHUTDOWN
-        self.registry.register_transition(
-            source=MineMode.MODE_B,
-            trigger=self.timer.upper_bound,
-            target=MineMode.SHUTDOWN
-        )
+        self.current_mode = drs.State("current_mode", NormalOperation())
+        self.timer = drs.Timer("CampaignTimer", initial_value=0.0)
 
     def update_rates(self):
-        # Timers tick up at rate 1.0
+        # Timers tick up naturally
         self.timer.rate = 1.0
-        self.timer.upper_threshold = 100.0 # 100 days until shutdown
+        # The mode dictates the rest of the physics!
+        self.current_mode.value.apply_dynamics(self.parent)
 
     def check_transitions(self, trigger_var=None, is_upper=True):
-        # Ask the state machine what the next mode is based on what triggered
-        next_mode = self.registry.get_next_mode(self.current_mode.value, trigger_var, is_upper)
+        # Ask the mode if its end conditions are met
+        next_mode = self.current_mode.value.check_end_conditions(self.parent)
+        
+        from mining_drs.modes import RequireDecision
+        if isinstance(next_mode, RequireDecision):
+            # Controller fallback logic
+            next_mode = ShutdownMode() 
+            
         if next_mode:
             self.current_mode.value = next_mode
 ```
@@ -149,30 +190,47 @@ from mining_drs.telemetry import Telemetry
 class ExampleMineModel(drs.Module):
     def __init__(self):
         super().__init__()
-        self.plant = MinePlant()
+        self.loader = GenerativeOreLoader()
+        self.plant = MinePlant(self.loader)
         self.controller = MineController(self.plant)
+        
         self.telemetry = Telemetry(self) # Auto-tracks all variables
+        # You can register custom metrics that run on every snapshot
+        self.telemetry.register_metric(
+            "TimerValue",
+            lambda t, m, s, h: m.controller.timer.value
+        )
 
     def update_rates(self):
         # Delegate down the tree
+        self.plant.update_rates()
         self.controller.update_rates()
-        self.plant.update_rates(self.controller.current_mode.value)
 
     def check_transitions(self, trigger_var=None, is_upper=True):
+        self.plant.check_transitions(trigger_var, is_upper)
         self.controller.check_transitions(trigger_var, is_upper)
 ```
 
-### Step 5: Run the Simulation
+### Step 5: Run the Simulation & Plot
 ```python
 from mining_drs import DRSEngine
+from mining_drs.plot import build_dashboard, plot_time_series
 
 sim = ExampleMineModel()
 engine = DRSEngine(sim)
 engine.run(max_time=365.0) # Run for 365 simulated days
 
-# Export to Pandas and plot!
 df = sim.telemetry.to_dataframe()
-print(df.head())
+
+# Create visualisations easily
+configs = [
+    {
+        "func": plot_time_series,
+        "kwargs": {"y_columns": ["OreStock_Level"], "title": "Stockpile Level"}
+    }
+]
+dashboard = build_dashboard(df, configs, title="Simulation Dashboard")
+dashboard.savefig("results.png")
 ```
 
 ---
@@ -180,11 +238,9 @@ print(df.head())
 ## 5. Conventions & Best Practices
 
 1. **Separation of Concerns**: Always separate the physical system (`MinePlant`) from the logic system (`MineController`).
-2. **Continuous vs Discrete**: 
-   - Use `update_rates()` strictly for assigning continuous `rate` and `threshold` values.
-   - Use `check_transitions()` (via the `StateMachine` registry) strictly for handling discrete mode changes or instant state resets.
-3. **Threshold Triggers**: When registering transitions in the StateMachine, use the `.upper_bound` and `.lower_bound` properties of a variable as the `trigger`. (e.g. `trigger=plant.ore_stock.lower_bound`).
-4. **Side Effects**: If a transition shouldn't change the mode but needs to trigger a side-effect (like generating a new parcel of ore), pass a python function as the `target` in `register_transition`. Ensure the function returns `None`.
+2. **`OperatingMode` Object Orientation**: Keep mode-specific transition logic and rate assignments contained within their respective `OperatingMode` classes. Keep global rules in the Plant.
+3. **Threshold Triggers**: When a threshold is hit, the engine triggers `check_transitions(trigger_var)`. Use `trigger_var` to identify what caused the event if multiple thresholds might fire at once.
+4. **Side Effects**: If an event (like a parcel finishing) shouldn't change the mode but needs to trigger a side-effect (like generating a new parcel), intercept it at the top of your controller's `check_transitions` function.
 5. **Zeroing Rates**: You don't need to manually reset rates to zero every cycle. The `DRSEngine` calls `zero_rates()` on all variables before calling `update_rates()`, ensuring that un-updated variables default to a rate of 0 and infinite thresholds.
 
 ---
@@ -199,7 +255,7 @@ print(df.head())
   * `.upper_bound` / `.lower_bound`: Properties used as triggers when registering transitions.
 * **`drs.Level(name, initial_value, rate)`**: Semantically represents a physical quantity that accumulates or depletes (like a stockpile). Inherits from `Variable`.
 * **`drs.Timer(name, initial_value, rate=1.0)`**: Semantically represents a clock or stopwatch. Inherits from `Level`. Contains a `.reset()` method to set the value back to 0.0.
-* **`drs.State(name, initial_value)`**: Represents discrete categories (like Enums). The engine ignores its rates for time-stepping, but Telemetry records its state changes.
+* **`drs.State(name, initial_value)`**: Represents discrete categories (like Enums, Modes). The engine ignores its rates for time-stepping, but Telemetry records its state changes.
 
 ### Module (`drs.module`)
 * **`drs.Module`**: The base class for all components.
@@ -210,10 +266,12 @@ print(df.head())
   * `initialize_state()`: **Override optionally**. Set up initial conditions before simulation starts.
   * `is_terminating_condition_met()`: **Override optionally**. Return `True` to stop the simulation dynamically.
 
-### StateMachine (`drs.modes`)
-* **`StateMachine`**: A registry for transitions.
-  * `register_transition(source, trigger, target)`: Binds a trigger (e.g. a timer hitting its upper bound) to a target (a new Mode `Enum`, or a callable function).
-  * `get_next_mode(current_mode, trigger, is_upper)`: Evaluates the registry to find if a transition should occur.
+### Operating Modes (`drs.modes`)
+* **`OperatingMode`**: Abstract base class for defining operational states.
+  * `apply_dynamics(model)`: Set rates and thresholds specific to this mode.
+  * `check_end_conditions(model)`: Check if the state forces a transition. Return the next `OperatingMode`, `RequireDecision()`, or `None`.
+  * `is_valid_start(model)`: Returns boolean indicating if the mode is valid under the current state.
+* **`RequireDecision`**: A signal flag returned by `check_end_conditions` indicating the Controller should take over transition logic.
 
 ### Engine (`drs.engine`)
 * **`DRSEngine(model)`**: The runner class.
@@ -221,6 +279,9 @@ print(df.head())
 
 ### Telemetry (`drs.telemetry`)
 * **`Telemetry(model)`**: Tracks variables automatically.
-  * `snapshot(current_time)`: Called internally by the Engine to record data.
-  * `to_dataframe()`: Returns a Pandas `DataFrame` containing the time-series history of the simulation. Perfect for Matplotlib or Seaborn.
-  * `register_metric(name, calc_fn)`: Allows you to register a custom calculation (like Net Present Value) that gets evaluated and recorded at every time step based on the simulation state.
+  * `to_dataframe()`: Returns a Pandas `DataFrame` containing the time-series history of the simulation.
+  * `register_metric(name, calc_fn)`: Register a custom calculation evaluated at every step.
+
+### Plotting (`drs.plot`)
+* **`build_dashboard(df, plot_configs, ...)`**: Generates a composite figure with multiple subplots.
+* **`plot_time_series`, `plot_ore_with_modes`, `plot_mode_distribution`, etc.**: Individual plotting functions designed for DRS telemetries.

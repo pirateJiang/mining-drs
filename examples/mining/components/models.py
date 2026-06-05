@@ -2,7 +2,14 @@ from drs.module import drs
 from drs.telemetry import Telemetry
 
 from .config import BaseDualStockpileConfig, ConcentratorConfig, CyanidationConfig
-from .plants import BaseBlendingPlant, ConcentratorPlant, CyanidationPlant
+from .supply_chain import (
+    BaseMineFace, BaseFleetLogistics, BaseMetallurgicalPlant,
+    ConcentratorMineFace, ConcentratorFleet, ConcentratorPlant,
+    CyanidationMineFace, CyanidationFleet, CyanidationPlant
+)
+from .sensors import (
+    BaseSensorNetwork, ConcentratorSensorNetwork, CyanidationSensorNetwork
+)
 from .controllers import (
     BaseBlendingController,
     ConcentratorController,
@@ -27,7 +34,10 @@ class BaseBlendingModel(drs.Module):
 
         # These must be instantiated by subclasses!
         self.generator = None
-        self.plant: BaseBlendingPlant = None
+        self.mine: BaseMineFace = None
+        self.fleet: BaseFleetLogistics = None
+        self.plant: BaseMetallurgicalPlant = None
+        self.sensors: BaseSensorNetwork = None
         self.controller: BaseBlendingController = None
         
         # Track global simulation time
@@ -41,12 +51,12 @@ class BaseBlendingModel(drs.Module):
 
             self.telemetry.register_metric(
                 "MassOfCurrentParcel_State",
-                lambda t, m, s, h: m.plant.current_parcel_mass.value,
+                lambda t, m, s, h: m.mine.true_current_parcel_mass.value,
             )
             # Use the universal routing fraction instead of hardcoding 'grade' or 'cyanide'
             self.telemetry.register_metric(
                 "CurrentParcelRoutingFraction_State",
-                lambda t, m, s, h: m.plant.current_parcel_routing_fraction,
+                lambda t, m, s, h: m.sensors.belief_routing_fraction,
             )
             self.telemetry.register_metric(
                 "Campaign_Shutdown_Timer",
@@ -60,22 +70,28 @@ class BaseBlendingModel(drs.Module):
     def update_rates(self):
         self.global_time.rate = 1.0
         self.controller.update_rates()
+        self.mine.update_rates()
+        self.fleet.update_rates()
         self.plant.update_rates()
+        self.sensors.update_rates()
 
     def is_terminating_condition_met(self) -> bool:
         # Terminate when the mine has extracted all its ore reserves
-        return self.plant.ore_extraction.value >= self.config.total_ore_to_extract
+        return self.mine.true_ore_extraction.value >= self.config.total_ore_to_extract
 
     def check_transitions(
         self, trigger_var: drs.Variable = None, is_upper: bool = True
     ):
+        self.mine.check_transitions(trigger_var, is_upper)
+        self.fleet.check_transitions(trigger_var, is_upper)
         self.plant.check_transitions(trigger_var, is_upper)
+        self.sensors.check_transitions(trigger_var, is_upper)
         self.controller.check_transitions(trigger_var, is_upper)
 
     def is_terminating_condition_met(self) -> bool:
         c = self.config
-        extraction_met = self.plant.ore_extraction.value >= c.total_ore_to_extract
-        stock_met = abs(self.plant.ore_stock.value - c.target_ore_stock_level) < 0.001
+        extraction_met = self.mine.true_ore_extraction.value >= c.total_ore_to_extract
+        stock_met = abs(self.sensors.belief_ore_stock.value - c.target_ore_stock_level) < 0.001
 
         return extraction_met and stock_met
 
@@ -118,10 +134,10 @@ class BaseBlendingModel(drs.Module):
 
         active_time = total_time - self.controller.time_shutdown.value
         if active_time > 0:
-            if hasattr(self.plant, "total_ore_milled"):
-                total_ore_processed = self.plant.total_ore_milled.value
+            if hasattr(self.plant, "true_total_ore_milled"):
+                total_ore_processed = self.plant.true_total_ore_milled.value
             else:
-                total_ore_processed = self.plant.ore_extraction.value - self.config.ore_to_be_extracted_during_warming_period
+                total_ore_processed = self.mine.true_ore_extraction.value - self.config.ore_to_be_extracted_during_warming_period
 
             throughput = total_ore_processed / active_time
             print(f"Throughput: {throughput:.4f} tons/day")
@@ -139,8 +155,11 @@ class ConcentratorModel(BaseBlendingModel):
 
         # Assemble specific components
         self.generator = StochasticFaciesGradeGenerator(self.config)
-        self.plant = ConcentratorPlant(self.config, self.generator)
-        self.controller = ConcentratorController(self.config, self.plant)
+        self.mine = ConcentratorMineFace(self.config, self.generator)
+        self.fleet = ConcentratorFleet(self.config, self.mine)
+        self.plant = ConcentratorPlant(self.config, self.fleet)
+        self.sensors = ConcentratorSensorNetwork(self.config, self.mine, self.fleet, self.plant)
+        self.controller = ConcentratorController(self.config, self.sensors, self.mine, self.fleet, self.plant)
 
         self.setup_telemetry()
 
@@ -155,7 +174,10 @@ class CyanidationModel(BaseBlendingModel):
 
         # Assemble specific components
         self.generator = CyanideGeostatisticalBlockGenerator(self.config)
-        self.plant = CyanidationPlant(self.config, self.generator)
-        self.controller = CyanidationController(self.config, self.plant)
+        self.mine = CyanidationMineFace(self.config, self.generator)
+        self.fleet = CyanidationFleet(self.config, self.mine)
+        self.plant = CyanidationPlant(self.config, self.fleet)
+        self.sensors = CyanidationSensorNetwork(self.config, self.mine, self.fleet, self.plant)
+        self.controller = CyanidationController(self.config, self.sensors, self.mine, self.fleet, self.plant)
 
         self.setup_telemetry()

@@ -89,7 +89,7 @@ Here is the standard workflow and best practice for creating a simulator using t
 Subclass `OperatingMode` to represent the discrete operational states of your system. You define the physics (how rates change) and preemption rules (when to switch modes) here.
 
 ```python
-from mining_drs.modes import OperatingMode, RequireDecision
+from drs.modes import OperatingMode, RequireDecision
 
 class NormalOperation(OperatingMode):
     @property
@@ -116,8 +116,8 @@ class NormalOperation(OperatingMode):
 Subclass `drs.Module`. Define the physical variables (Levels) in `__init__`. Override `update_rates()` to define any global, unconditional rules that always apply. For external data, pass in an iterable `loader` (similar to a `DataLoader` feeding `OreParcel`s) and let the Plant manage its own transitions to load the next batch when thresholds are hit.
 
 ```python
-from mining_drs import drs
-from mining_drs.data import BaseOreGenerator, OreParcel
+from drs import drs
+from drs.data import BaseOreGenerator, OreParcel
 
 class GenerativeOreLoader(BaseOreGenerator):
     def __iter__(self): return self
@@ -172,7 +172,7 @@ class MineController(drs.Module):
         # Ask the mode if its end conditions are met
         next_mode = self.current_mode.value.check_end_conditions(self.parent)
         
-        from mining_drs.modes import RequireDecision
+        from drs.modes import RequireDecision
         if isinstance(next_mode, RequireDecision):
             # Controller fallback logic
             next_mode = ShutdownMode() 
@@ -185,7 +185,7 @@ class MineController(drs.Module):
 Create a master module that contains both the plant and controller. Initialize `Telemetry`.
 
 ```python
-from mining_drs.telemetry import Telemetry
+from drs.telemetry import Telemetry
 
 class ExampleMineModel(drs.Module):
     def __init__(self):
@@ -213,8 +213,8 @@ class ExampleMineModel(drs.Module):
 
 ### Step 5: Run the Simulation & Plot
 ```python
-from mining_drs import DRSEngine
-from mining_drs.plot import build_dashboard, plot_time_series
+from drs import DRSEngine
+from drs.plot import build_dashboard, plot_time_series
 
 sim = ExampleMineModel()
 engine = DRSEngine(sim)

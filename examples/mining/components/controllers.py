@@ -1,7 +1,18 @@
 from drs.module import drs
 from drs.modes import RequireDecision
+from .sensors import BaseSensorNetwork, ConcentratorSensorNetwork, CyanidationSensorNetwork
 from .config import ConcentratorConfig, CyanidationConfig
-from .plants import ConcentratorPlant, CyanidationPlant
+from .supply_chain import (
+    BaseMineFace,
+    BaseFleetLogistics,
+    BaseMetallurgicalPlant,
+    ConcentratorMineFace,
+    ConcentratorFleet,
+    ConcentratorPlant,
+    CyanidationMineFace,
+    CyanidationFleet,
+    CyanidationPlant,
+)
 from .modes import (
     ModeA,
     ModeAContingency,
@@ -25,9 +36,12 @@ class BaseBlendingController(drs.Module):
     for dual-stockpile surging operations.
     """
 
-    def __init__(self, config, plant):
+    def __init__(self, config, sensors: BaseSensorNetwork, mine: BaseMineFace, fleet: BaseFleetLogistics, plant: BaseMetallurgicalPlant):
         super().__init__()
         self.config = config
+        self.sensors = sensors
+        self.mine = mine
+        self.fleet = fleet
         self.plant = plant
 
         self.current_mode = drs.State("current_mode", ModeA())
@@ -80,13 +94,13 @@ class BaseBlendingController(drs.Module):
         self, trigger_var: drs.Variable = None, is_upper: bool = True
     ):
         c = self.config
-        plant = self.plant
+        mine = self.mine
 
         # Global warmup reset
-        if trigger_var == plant.ore_extraction and is_upper:
+        if trigger_var == mine.true_ore_extraction and is_upper:
             if (
                 abs(
-                    plant.ore_extraction.value
+                    mine.true_ore_extraction.value
                     - c.ore_to_be_extracted_during_warming_period
                 )
                 < 0.1
@@ -122,27 +136,27 @@ class ConcentratorController(BaseBlendingController):
     Loops infinitely between Modes A and B based on critical Ore 2 levels.
     """
 
-    def __init__(self, config: ConcentratorConfig, plant: ConcentratorPlant):
-        super().__init__(config, plant)
+    def __init__(self, config: ConcentratorConfig, sensors: ConcentratorSensorNetwork, mine: ConcentratorMineFace, fleet: ConcentratorFleet, plant: ConcentratorPlant):
+        super().__init__(config, sensors, mine, fleet, plant)
 
     def controller_decision(self):
         c = self.config
-        plant = self.plant
+        sensors = self.sensors
         m = self.current_mode.value.name
 
         if self.is_campaign_complete():
             self.reset_campaign_timer()
             if m == "SHUTDOWN":
-                if plant.ore2_stock.value > c.critical_ore2_level:
+                if sensors.belief_ore2_stock.value > c.critical_ore2_level:
                     return (
                         ModeA()
-                        if plant.ore_stock.value <= c.target_ore_stock_level
+                        if sensors.belief_ore_stock.value <= c.target_ore_stock_level
                         else ModeAMineSurging()
                     )
                 else:
                     return (
                         ModeB()
-                        if plant.ore_stock.value <= c.target_ore_stock_level
+                        if sensors.belief_ore_stock.value <= c.target_ore_stock_level
                         else ModeBMineSurging()
                     )
             else:
@@ -154,7 +168,7 @@ class ConcentratorController(BaseBlendingController):
                 return ModeA() if m == "MODE_A_CONTINGENCY" else ModeB()
 
         if m in ("MODE_A_MINE_SURGING", "MODE_B_MINE_SURGING"):
-            if plant.ore_stock.value <= c.target_ore_stock_level:
+            if sensors.belief_ore_stock.value <= c.target_ore_stock_level:
                 return ModeA() if m == "MODE_A_MINE_SURGING" else ModeB()
 
         return None
@@ -167,8 +181,8 @@ class CyanidationController(BaseBlendingController):
     the transition to Stage 2 (Modes C & D) halfway through the mine life.
     """
 
-    def __init__(self, config: CyanidationConfig, plant: CyanidationPlant):
-        super().__init__(config, plant)
+    def __init__(self, config: CyanidationConfig, sensors: CyanidationSensorNetwork, mine: CyanidationMineFace, fleet: CyanidationFleet, plant: CyanidationPlant):
+        super().__init__(config, sensors, mine, fleet, plant)
         
         # Stage 2 Timers (Specific to Cyanidation)
         self.time_mode_c = drs.Timer("TimeInModeC_Timer", initial_value=0.0)
@@ -192,10 +206,10 @@ class CyanidationController(BaseBlendingController):
         
         # Also handle specific warmup reset for Stage 2 timers
         c = self.config
-        plant = self.plant
-        if trigger_var == plant.ore_extraction and is_upper:
+        mine = self.mine
+        if trigger_var == mine.true_ore_extraction and is_upper:
             if (
-                abs(plant.ore_extraction.value - c.ore_to_be_extracted_during_warming_period) < 0.1
+                abs(mine.true_ore_extraction.value - c.ore_to_be_extracted_during_warming_period) < 0.1
             ):
                 self.time_mode_c.reset()
                 self.time_mode_c_contingency.reset()
@@ -206,12 +220,11 @@ class CyanidationController(BaseBlendingController):
 
     def controller_decision(self):
         c = self.config
-        plant = self.plant
+        sensors = self.sensors
         m = self.current_mode.value.name
 
         # The paper dictates that when production requirements increase (Period 27+),
         # the controller should evaluate switching to Configuration C or Configuration D.
-        # A single period is a 34-day production campaign + 1-day shutdown? Wait, user said 29-day campaign + 1-day shutdown = 30 days.
         # Let's use the config variables directly to dynamically calculate period length.
         period_length = c.duration_of_production_campaigns + c.duration_of_shutdowns
         stage_2_start_time = c.stage_2_start_period * period_length
@@ -223,31 +236,31 @@ class CyanidationController(BaseBlendingController):
 
                 # In Stage 1, logic mimics the baseline Modes A and B
                 if not is_stage_2:
-                    if plant.ore2_stock.value > c.critical_ore2_level:
+                    if sensors.belief_ore2_stock.value > c.critical_ore2_level:
                         return (
                             ModeA()
-                            if plant.ore_stock.value <= c.target_ore_stock_level
+                            if sensors.belief_ore_stock.value <= c.target_ore_stock_level
                             else ModeAMineSurging()
                         )
                     else:
                         return (
                             ModeB()
-                            if plant.ore_stock.value <= c.target_ore_stock_level
+                            if sensors.belief_ore_stock.value <= c.target_ore_stock_level
                             else ModeBMineSurging()
                         )
 
                 # In Stage 2, it evaluates Mode C vs Mode D
                 else:
-                    if plant.ore2_stock.value > c.critical_ore2_level:
+                    if sensors.belief_ore2_stock.value > c.critical_ore2_level:
                         return (
                             ModeC()
-                            if plant.ore_stock.value <= c.target_ore_stock_level
+                            if sensors.belief_ore_stock.value <= c.target_ore_stock_level
                             else ModeCMineSurging()
                         )
                     else:
                         return (
                             ModeD()
-                            if plant.ore_stock.value <= c.target_ore_stock_level
+                            if sensors.belief_ore_stock.value <= c.target_ore_stock_level
                             else ModeDMineSurging()
                         )
 
@@ -263,7 +276,7 @@ class CyanidationController(BaseBlendingController):
                 elif m == "MODE_D_CONTINGENCY": return ModeD()
 
         if m in ("MODE_A_MINE_SURGING", "MODE_B_MINE_SURGING", "MODE_C_MINE_SURGING", "MODE_D_MINE_SURGING"):
-            if plant.ore_stock.value <= c.target_ore_stock_level:
+            if sensors.belief_ore_stock.value <= c.target_ore_stock_level:
                 if m == "MODE_A_MINE_SURGING": return ModeA()
                 elif m == "MODE_B_MINE_SURGING": return ModeB()
                 elif m == "MODE_C_MINE_SURGING": return ModeC()

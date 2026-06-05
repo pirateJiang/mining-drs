@@ -56,11 +56,11 @@ def evaluate_scenario(
             )
 
         if hasattr(sim.plant, "total_ore_milled"):
-            total_ore_processed = sim.plant.total_ore_milled.value
+            total_ore_processed = sim.plant.true_total_ore_milled.value
         else:
-            total_ore_processed = sim.plant.ore_extraction.value - config.ore_to_be_extracted_during_warming_period
+            total_ore_processed = sim.mine.true_ore_extraction.value - config.ore_to_be_extracted_during_warming_period
 
-        total_cyanide_used = sim.plant.total_cyanide_consumed.value
+        total_cyanide_used = sim.plant.true_total_cyanide_consumed.value
 
         empirical_avg_cyanide = 0.0
         if total_ore_processed > 0:

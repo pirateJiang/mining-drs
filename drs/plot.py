@@ -579,8 +579,8 @@ def build_dashboard(df, plot_configs, title="Simulation Dashboard", figsize=(16,
 
 def plot_state_space(
     df,
-    col_x="Ore1Stock_Level",
-    col_y="Ore2Stock_Level",
+    col_x="TrueOre1Stock_Level",
+    col_y="TrueOre2Stock_Level",
     title="State Space Trajectory",
     ax=None,
 ):
@@ -741,7 +741,7 @@ def plot_mode_distribution(
 
 def plot_cumulative_throughput(
     df,
-    extraction_col="OreExtraction_Level",
+    extraction_col="TrueOreExtraction_Level",
     time_col="time",
     ideal_rate=None,
     title="Cumulative Throughput vs Target",
@@ -834,7 +834,7 @@ def plot_mode_dwell_times(df, time_col="time", mode_col="current_mode", title="M
         own_ax = False
 
     # Use a boxplot to show the distribution of time spent in each mode
-    sns.boxplot(data=durations, x="duration", y="mode", ax=ax, palette="Set2")
+    sns.boxplot(data=durations, x="duration", y="mode", ax=ax, palette="Set2", hue="mode", legend=False)
     sns.stripplot(
         data=durations, x="duration", y="mode", color="black", alpha=0.4, size=4, ax=ax
     )
@@ -866,6 +866,9 @@ def plot_normalized_deviation_violin(
     target_total=60000.0,
     target_ore1=42000.0,
     target_ore2=18000.0,
+    col_total="TrueOreStock_Level",
+    col_ore1="TrueOre1Stock_Level",
+    col_ore2="TrueOre2Stock_Level",
     ax=None
 ):
     """
@@ -878,9 +881,17 @@ def plot_normalized_deviation_violin(
         own_ax = False
 
     # 1. Calculate Deviations
-    dev_total = ((df["OreStock_Level"] - target_total) / target_total) * 100 if target_total else df["OreStock_Level"] * 0
-    dev_ore1 = ((df["Ore1Stock_Level"] - target_ore1) / target_ore1) * 100 if target_ore1 else df["Ore1Stock_Level"] * 0
-    dev_ore2 = ((df["Ore2Stock_Level"] - target_ore2) / target_ore2) * 100 if target_ore2 else df["Ore2Stock_Level"] * 0
+    # Fallback to old names if new names aren't present
+    if col_total not in df.columns and "OreStock_Level" in df.columns:
+        col_total = "OreStock_Level"
+    if col_ore1 not in df.columns and "Ore1Stock_Level" in df.columns:
+        col_ore1 = "Ore1Stock_Level"
+    if col_ore2 not in df.columns and "Ore2Stock_Level" in df.columns:
+        col_ore2 = "Ore2Stock_Level"
+
+    dev_total = ((df[col_total] - target_total) / target_total) * 100 if target_total else df[col_total] * 0
+    dev_ore1 = ((df[col_ore1] - target_ore1) / target_ore1) * 100 if target_ore1 else df[col_ore1] * 0
+    dev_ore2 = ((df[col_ore2] - target_ore2) / target_ore2) * 100 if target_ore2 else df[col_ore2] * 0
 
     # 2. Package into a new DataFrame and Melt it for Seaborn
     dev_df = pd.DataFrame({
@@ -921,7 +932,7 @@ def plot_normalized_deviation_violin(
     return ax
 
 
-def plot_attributed_deficit(df, time_col="time", mode_col="current_mode", extraction_col="OreExtraction_Level", 
+def plot_attributed_deficit(df, time_col="time", mode_col="current_mode", extraction_col="TrueOreExtraction_Level", 
                             ideal_rate_per_day=6000.0, title="Cumulative Production Deficit by Mode", ax=None, palette=None):
     """
     Calculates the instantaneous lost production at each time step and attributes it
@@ -996,7 +1007,7 @@ def plot_attributed_deficit(df, time_col="time", mode_col="current_mode", extrac
         return fig
     return ax
 
-def plot_deficit_disparity(df, time_col="time", mode_col="current_mode", extraction_col="OreExtraction_Level", ideal_rate=6000.0, title="Mode Efficiency (Time Spent vs. Deficit Caused)", ax=None, verbose=True):
+def plot_deficit_disparity(df, time_col="time", mode_col="current_mode", extraction_col="TrueOreExtraction_Level", ideal_rate=6000.0, title="Mode Efficiency (Time Spent vs. Deficit Caused)", ax=None, verbose=True):
     """
     Shows the disproportionate impact of modes by comparing the % of total time spent 
     in a mode against the % of the total deficit it caused.
@@ -1048,7 +1059,7 @@ def plot_deficit_disparity(df, time_col="time", mode_col="current_mode", extract
         return fig
     return ax
 
-def plot_geology_impact(df, time_col="time", mode_col="current_mode", extraction_col="OreExtraction_Level", grade_col="percentage_of_ore2", ideal_rate=6000.0, bottleneck_mode="MODE_A", max_rate_ore1=3600, max_rate_ore2=2400, ax=None):
+def plot_geology_impact(df, time_col="time", mode_col="current_mode", extraction_col="TrueOreExtraction_Level", grade_col="percentage_of_ore2", ideal_rate=6000.0, bottleneck_mode="MODE_A", max_rate_ore1=3600, max_rate_ore2=2400, ax=None):
     """
     Plots the true Geological Bottleneck. 
     Uses forward-differencing to correctly align discrete event rates with their causal states.
@@ -1120,7 +1131,7 @@ def plot_geology_impact(df, time_col="time", mode_col="current_mode", extraction
         return fig
     return ax
 
-def plot_deficit_breakdown_bar(df, time_col="time", mode_col="current_mode", extraction_col="OreExtraction_Level", ideal_rate_per_day=6000.0, title="Final Deficit Breakdown by Mode (%)", ax=None, palette=None, verbose=True):
+def plot_deficit_breakdown_bar(df, time_col="time", mode_col="current_mode", extraction_col="TrueOreExtraction_Level", ideal_rate_per_day=6000.0, title="Final Deficit Breakdown by Mode (%)", ax=None, palette=None, verbose=True):
     """
     Plots a horizontal bar chart of the final cumulative deficit, normalized to 
     show the percentage contribution of each mode to the total lost tonnage.
@@ -1185,7 +1196,7 @@ def plot_deficit_breakdown_bar(df, time_col="time", mode_col="current_mode", ext
         return fig
     return ax
 
-def plot_structural_vs_operational_deficit(df, time_col="time", mode_col="current_mode", extraction_col="OreExtraction_Level", ideal_rate=6000.0, structural_modes=None, ax=None, verbose=True):
+def plot_structural_vs_operational_deficit(df, time_col="time", mode_col="current_mode", extraction_col="TrueOreExtraction_Level", ideal_rate=6000.0, structural_modes=None, ax=None, verbose=True):
     """
     Separates the cumulative deficit into 'Unavoidable' (Geology/Shutdowns) 
     and 'Avoidable' (Control Logic / Blending Failures).
@@ -1245,7 +1256,7 @@ def plot_structural_vs_operational_deficit(df, time_col="time", mode_col="curren
         return fig
     return ax
 
-def plot_normalized_cumulative_deficit(df, time_col="time", mode_col="current_mode", extraction_col="OreExtraction_Level", ideal_rate_per_day=6000.0, title="Deficit Composition Over Time (100% Stacked)", ax=None, palette=None):
+def plot_normalized_cumulative_deficit(df, time_col="time", mode_col="current_mode", extraction_col="TrueOreExtraction_Level", ideal_rate_per_day=6000.0, title="Deficit Composition Over Time (100% Stacked)", ax=None, palette=None):
     """
     Plots the cumulative deficit normalized to 100% at each time step.
     Shows how the composition of the plant's inefficiency evolves over time.
@@ -1295,7 +1306,7 @@ def plot_normalized_cumulative_deficit(df, time_col="time", mode_col="current_mo
         return fig
     return ax
 
-def plot_structural_vs_operational_by_mode(df, time_col="time", mode_col="current_mode", extraction_col="OreExtraction_Level", ideal_rate=6000.0, title="Structural vs. Operational Deficit by Base Mode", structural_modes=None, base_mode_mapper=None, ax=None, verbose=True):
+def plot_structural_vs_operational_by_mode(df, time_col="time", mode_col="current_mode", extraction_col="TrueOreExtraction_Level", ideal_rate=6000.0, title="Structural vs. Operational Deficit by Base Mode", structural_modes=None, base_mode_mapper=None, ax=None, verbose=True):
     """
     Groups deficits by Base Mode (Mode A, Mode B, Shutdown) and stacks them by 
     whether the deficit was Structural (Unavoidable) or Operational (Avoidable via RL).

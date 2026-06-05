@@ -31,7 +31,7 @@ class ConcentratorConfig(BaseDualStockpileConfig):
     Attribute: Ore Grade (%)
     """
 
-    mean_grade_face_1: float = 30.0
+    mean_grade: float = 30.0
     std_dev_grade: float = 5.0
     grade_percentage_scale: float = 100.0
 
@@ -68,12 +68,12 @@ class CyanidationConfig(BaseDualStockpileConfig):
     # Milling rates specific to Stage 1 of the Cyanidation paper (Table 4)
     # (If they are the same as Navarra 2019 in your specific test case, you can leave them as is,
     # but separating them allows you to easily add Stage 2 modes later!)
-    mode_a_ore1_milling_rate: float = 3600.0
-    mode_a_ore2_milling_rate: float = 2400.0
-    mode_a_contingency_ore1_milling_rate: float = 3900.0
-    mode_b_ore1_milling_rate: float = 4600.0
-    mode_b_ore2_milling_rate: float = 800.0
-    mode_b_contingency_ore2_milling_rate: float = 2500.0
+    mode_a_ore1_milling_rate: float = 400.0
+    mode_a_ore2_milling_rate: float = 1600.0
+    mode_a_contingency_ore1_milling_rate: float = 1300.0
+    mode_b_ore1_milling_rate: float = 765.0
+    mode_b_ore2_milling_rate: float = 935.0
+    mode_b_contingency_ore2_milling_rate: float = 850.0
 
     # Stage 2 Transition
     stage_2_start_period: int = 26
@@ -90,11 +90,11 @@ class CyanidationConfig(BaseDualStockpileConfig):
     mode_d_contingency_ore2_milling_rate: float = 1170.0
 
     # Average Cyanide Consumption per mode (kg/t)
-    mode_a_avg_cyanide: float = 1.90
-    mode_a_contingency_avg_cyanide: float = 3.22
-    mode_b_avg_cyanide: float = 2.05
-    mode_b_contingency_avg_cyanide: float = 1.61
-    mode_c_avg_cyanide: float = 2.25
-    mode_c_contingency_avg_cyanide: float = 3.22
-    mode_d_avg_cyanide: float = 2.49
-    mode_d_contingency_avg_cyanide: float = 1.61
+    mode_a_avg_cyanide: float = 1.9
+    mode_a_contingency_avg_cyanide: float = 3.2
+    mode_b_avg_cyanide: float = 2.3
+    mode_b_contingency_avg_cyanide: float = 1.6
+    mode_c_avg_cyanide: float = 2.3
+    mode_c_contingency_avg_cyanide: float = 3.2
+    mode_d_avg_cyanide: float = 2.5
+    mode_d_contingency_avg_cyanide: float = 1.6

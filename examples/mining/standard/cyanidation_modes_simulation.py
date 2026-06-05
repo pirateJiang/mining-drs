@@ -36,100 +36,40 @@ def evaluate_scenario(
 
         engine.run(max_time=config.replication_length)
 
-        # We construct the list of modes and their nominal throughputs & cyanides
-        modes_info = [
-            (
-                sim.controller.time_mode_a.value,
-                config.mode_a_ore1_milling_rate + config.mode_a_ore2_milling_rate,
-                config.mode_a_avg_cyanide,
-            ),
-            (
-                sim.controller.time_mode_a_contingency.value,
-                config.mode_a_contingency_ore1_milling_rate,
-                config.mode_a_contingency_avg_cyanide,
-            ),
-            (
-                sim.controller.time_mode_a_surging.value,
-                config.mode_a_ore1_milling_rate + config.mode_a_ore2_milling_rate,
-                config.mode_a_avg_cyanide,
-            ),
-            (
-                sim.controller.time_mode_b.value,
-                config.mode_b_ore1_milling_rate + config.mode_b_ore2_milling_rate,
-                config.mode_b_avg_cyanide,
-            ),
-            (
-                sim.controller.time_mode_b_contingency.value,
-                config.mode_b_contingency_ore2_milling_rate,
-                config.mode_b_contingency_avg_cyanide,
-            ),
-            (
-                sim.controller.time_mode_b_surging.value,
-                config.mode_b_ore1_milling_rate + config.mode_b_ore2_milling_rate,
-                config.mode_b_avg_cyanide,
-            ),
-        ]
-
+        # Real throughput calculation excluding shutdown
+        active_time = (
+            sim.controller.time_mode_a.value
+            + sim.controller.time_mode_a_contingency.value
+            + sim.controller.time_mode_a_surging.value
+            + sim.controller.time_mode_b.value
+            + sim.controller.time_mode_b_contingency.value
+            + sim.controller.time_mode_b_surging.value
+        )
         if hasattr(sim.controller, "time_mode_c"):
-            modes_info.extend(
-                [
-                    (
-                        sim.controller.time_mode_c.value,
-                        config.mode_c_ore1_milling_rate
-                        + config.mode_c_ore2_milling_rate,
-                        config.mode_c_avg_cyanide,
-                    ),
-                    (
-                        sim.controller.time_mode_c_contingency.value,
-                        config.mode_c_contingency_ore1_milling_rate,
-                        config.mode_c_contingency_avg_cyanide,
-                    ),
-                    (
-                        sim.controller.time_mode_c_surging.value,
-                        config.mode_c_ore1_milling_rate
-                        + config.mode_c_ore2_milling_rate,
-                        config.mode_c_avg_cyanide,
-                    ),
-                    (
-                        sim.controller.time_mode_d.value,
-                        config.mode_d_ore1_milling_rate
-                        + config.mode_d_ore2_milling_rate,
-                        config.mode_d_avg_cyanide,
-                    ),
-                    (
-                        sim.controller.time_mode_d_contingency.value,
-                        config.mode_d_contingency_ore2_milling_rate,
-                        config.mode_d_contingency_avg_cyanide,
-                    ),
-                    (
-                        sim.controller.time_mode_d_surging.value,
-                        config.mode_d_ore1_milling_rate
-                        + config.mode_d_ore2_milling_rate,
-                        config.mode_d_avg_cyanide,
-                    ),
-                ]
+            active_time += (
+                sim.controller.time_mode_c.value
+                + sim.controller.time_mode_c_contingency.value
+                + sim.controller.time_mode_c_surging.value
+                + sim.controller.time_mode_d.value
+                + sim.controller.time_mode_d_contingency.value
+                + sim.controller.time_mode_d_surging.value
             )
 
-        total_nominal_ore = sum(time * rate for time, rate, _ in modes_info)
-        
-        # Pull actual tracked cyanide consumption metric directly from plant state
-        actual_cyanide_consumed = sim.plant.total_cyanide_consumed.value
-        
-        avg_cyanide = 0.0
-        if total_nominal_ore > 0:
-            avg_cyanide = actual_cyanide_consumed / total_nominal_ore
+        if hasattr(sim.plant, "total_ore_milled"):
+            total_ore_processed = sim.plant.total_ore_milled.value
+        else:
+            total_ore_processed = sim.plant.ore_extraction.value - config.ore_to_be_extracted_during_warming_period
 
-        # Real throughput calculation excluding shutdown
-        active_time = sum(time for time, _, _ in modes_info)
-        ore_processed = (
-            sim.plant.ore_extraction.value
-            - sim.config.ore_to_be_extracted_during_warming_period
-        )
+        total_cyanide_used = sim.plant.total_cyanide_consumed.value
 
-        if active_time > 0 and ore_processed > 0:
-            throughput = ore_processed / active_time
+        empirical_avg_cyanide = 0.0
+        if total_ore_processed > 0:
+            empirical_avg_cyanide = total_cyanide_used / total_ore_processed
+
+        if active_time > 0 and total_ore_processed > 0:
+            throughput = total_ore_processed / active_time
             throughputs.append(throughput)
-            cyanide_consumptions.append(avg_cyanide)
+            cyanide_consumptions.append(empirical_avg_cyanide)
 
     if not throughputs:
         return 0.0, 0.0, 0.0, 0.0

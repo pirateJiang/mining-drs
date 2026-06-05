@@ -43,6 +43,10 @@ class ModeA(OperatingMode):
 
         # --- Plant Rates ---
         plant.ore_extraction.rate = r
+        if hasattr(plant, "total_cyanide_consumed"):
+            plant.total_cyanide_consumed.rate = r * getattr(c, "mode_a_avg_cyanide", 0.0)
+        if hasattr(plant, "total_ore_milled"):
+            plant.total_ore_milled.rate = r
         plant.ore_extracted_from_current_parcel.rate = r
         plant.ore_stock.rate = 0.0
         plant.ore1_stock.rate = r * (1.0 - p) - c.mode_a_ore1_milling_rate
@@ -51,11 +55,7 @@ class ModeA(OperatingMode):
         plant.ore1_stock.lower_threshold = 0.0
         plant.ore2_stock.lower_threshold = 0.0
 
-        if hasattr(plant, "total_cyanide_consumed"):
-            milling_rate = c.mode_a_ore1_milling_rate + c.mode_a_ore2_milling_rate
-            plant.total_cyanide_consumed.rate = milling_rate * plant.current_parcel_cyanide.value
 
-        # --- Controller Rates ---
         controller.time_mode_a.rate = 1.0
         controller.time_executed_campaign_shutdown.rate = 1.0
         controller.time_executed_campaign_shutdown.upper_threshold = (
@@ -99,6 +99,10 @@ class ModeAContingency(OperatingMode):
         r = c.mode_a_contingency_ore1_milling_rate
 
         plant.ore_extraction.rate = r
+        if hasattr(plant, "total_cyanide_consumed"):
+            plant.total_cyanide_consumed.rate = r * getattr(c, "mode_a_contingency_avg_cyanide", 0.0)
+        if hasattr(plant, "total_ore_milled"):
+            plant.total_ore_milled.rate = r
         plant.ore_extracted_from_current_parcel.rate = r
         plant.ore_stock.rate = 0.0
         plant.ore1_stock.rate = r * (1.0 - p) - r
@@ -106,11 +110,6 @@ class ModeAContingency(OperatingMode):
 
         plant.ore1_stock.lower_threshold = 0.0
 
-        if hasattr(plant, "total_cyanide_consumed"):
-            milling_rate = c.mode_a_contingency_ore1_milling_rate
-            plant.total_cyanide_consumed.rate = (
-                milling_rate * plant.current_parcel_cyanide.value
-            )
 
         controller.time_mode_a_contingency.rate = 1.0
         controller.time_executed_campaign_shutdown.rate = 1.0
@@ -162,6 +161,11 @@ class ModeAMineSurging(OperatingMode):
         r = c.mode_a_ore1_milling_rate * 1.0 / (1.0 - p)
 
         plant.ore_extraction.rate = r
+        r_mill = c.mode_a_ore1_milling_rate + c.mode_a_ore2_milling_rate
+        if hasattr(plant, "total_cyanide_consumed"):
+            plant.total_cyanide_consumed.rate = r_mill * getattr(c, "mode_a_avg_cyanide", 0.0)
+        if hasattr(plant, "total_ore_milled"):
+            plant.total_ore_milled.rate = r_mill
         plant.ore_extracted_from_current_parcel.rate = r
         plant.ore_stock.rate = (
             r - c.mode_a_ore1_milling_rate - c.mode_a_ore2_milling_rate
@@ -172,9 +176,6 @@ class ModeAMineSurging(OperatingMode):
         plant.ore_stock.lower_threshold = c.target_ore_stock_level
         plant.ore2_stock.lower_threshold = 0.0
 
-        if hasattr(plant, "total_cyanide_consumed"):
-            milling_rate = c.mode_a_ore1_milling_rate + c.mode_a_ore2_milling_rate
-            plant.total_cyanide_consumed.rate = milling_rate * plant.current_parcel_cyanide.value
 
         controller.time_mode_a_surging.rate = 1.0
         controller.time_executed_campaign_shutdown.rate = 1.0
@@ -221,6 +222,10 @@ class ModeB(OperatingMode):
         r = c.mode_b_ore1_milling_rate + c.mode_b_ore2_milling_rate
 
         plant.ore_extraction.rate = r
+        if hasattr(plant, "total_cyanide_consumed"):
+            plant.total_cyanide_consumed.rate = r * getattr(c, "mode_b_avg_cyanide", 0.0)
+        if hasattr(plant, "total_ore_milled"):
+            plant.total_ore_milled.rate = r
         plant.ore_extracted_from_current_parcel.rate = r
         plant.ore_stock.rate = 0.0
         plant.ore1_stock.rate = r * (1.0 - p) - c.mode_b_ore1_milling_rate
@@ -229,9 +234,6 @@ class ModeB(OperatingMode):
         plant.ore1_stock.lower_threshold = 0.0
         plant.ore2_stock.lower_threshold = 0.0
 
-        if hasattr(plant, "total_cyanide_consumed"):
-            milling_rate = c.mode_b_ore1_milling_rate + c.mode_b_ore2_milling_rate
-            plant.total_cyanide_consumed.rate = milling_rate * plant.current_parcel_cyanide.value
 
         controller.time_mode_b.rate = 1.0
         controller.time_executed_campaign_shutdown.rate = 1.0
@@ -276,6 +278,10 @@ class ModeBContingency(OperatingMode):
         r = c.mode_b_contingency_ore2_milling_rate
 
         plant.ore_extraction.rate = r
+        if hasattr(plant, "total_cyanide_consumed"):
+            plant.total_cyanide_consumed.rate = r * getattr(c, "mode_b_contingency_avg_cyanide", 0.0)
+        if hasattr(plant, "total_ore_milled"):
+            plant.total_ore_milled.rate = r
         plant.ore_extracted_from_current_parcel.rate = r
         plant.ore_stock.rate = 0.0
         plant.ore1_stock.rate = r * (1.0 - p)
@@ -283,11 +289,6 @@ class ModeBContingency(OperatingMode):
 
         plant.ore2_stock.lower_threshold = 0.0
 
-        if hasattr(plant, "total_cyanide_consumed"):
-            milling_rate = c.mode_b_contingency_ore2_milling_rate
-            plant.total_cyanide_consumed.rate = (
-                milling_rate * plant.current_parcel_cyanide.value
-            )
 
         controller.time_mode_b_contingency.rate = 1.0
         controller.time_executed_campaign_shutdown.rate = 1.0
@@ -339,6 +340,11 @@ class ModeBMineSurging(OperatingMode):
         r = c.mode_b_ore2_milling_rate * 1.0 / p
 
         plant.ore_extraction.rate = r
+        r_mill = c.mode_b_ore1_milling_rate + c.mode_b_ore2_milling_rate
+        if hasattr(plant, "total_cyanide_consumed"):
+            plant.total_cyanide_consumed.rate = r_mill * getattr(c, "mode_b_avg_cyanide", 0.0)
+        if hasattr(plant, "total_ore_milled"):
+            plant.total_ore_milled.rate = r_mill
         plant.ore_extracted_from_current_parcel.rate = r
         plant.ore_stock.rate = (
             r - c.mode_b_ore1_milling_rate - c.mode_b_ore2_milling_rate
@@ -349,9 +355,6 @@ class ModeBMineSurging(OperatingMode):
         plant.ore_stock.lower_threshold = c.target_ore_stock_level
         plant.ore1_stock.lower_threshold = 0.0
 
-        if hasattr(plant, "total_cyanide_consumed"):
-            milling_rate = c.mode_b_ore1_milling_rate + c.mode_b_ore2_milling_rate
-            plant.total_cyanide_consumed.rate = milling_rate * plant.current_parcel_cyanide.value
 
         controller.time_mode_b_surging.rate = 1.0
         controller.time_executed_campaign_shutdown.rate = 1.0
@@ -382,6 +385,10 @@ class Shutdown(OperatingMode):
     def apply_dynamics(self, model: drs.Module):
         controller = model.controller
         controller.time_shutdown.rate = 1.0
+        if hasattr(model.plant, "total_cyanide_consumed"):
+            model.plant.total_cyanide_consumed.rate = 0.0
+        if hasattr(model.plant, "total_ore_milled"):
+            model.plant.total_ore_milled.rate = 0.0
         controller.time_executed_campaign_shutdown.rate = 1.0
         controller.time_executed_campaign_shutdown.upper_threshold = (
             controller.config.duration_of_shutdowns
@@ -426,6 +433,10 @@ class ModeC(OperatingMode):
         r = c.mode_c_ore1_milling_rate + c.mode_c_ore2_milling_rate
 
         plant.ore_extraction.rate = r
+        if hasattr(plant, "total_cyanide_consumed"):
+            plant.total_cyanide_consumed.rate = r * getattr(c, "mode_c_avg_cyanide", 0.0)
+        if hasattr(plant, "total_ore_milled"):
+            plant.total_ore_milled.rate = r
         plant.ore_extracted_from_current_parcel.rate = r
         plant.ore_stock.rate = 0.0
         plant.ore1_stock.rate = r * (1.0 - p) - c.mode_c_ore1_milling_rate
@@ -434,9 +445,6 @@ class ModeC(OperatingMode):
         plant.ore1_stock.lower_threshold = 0.0
         plant.ore2_stock.lower_threshold = 0.0
 
-        if hasattr(plant, "total_cyanide_consumed"):
-            milling_rate = c.mode_c_ore1_milling_rate + c.mode_c_ore2_milling_rate
-            plant.total_cyanide_consumed.rate = milling_rate * plant.current_parcel_cyanide.value
 
         controller.time_mode_c.rate = 1.0
         controller.time_executed_campaign_shutdown.rate = 1.0
@@ -481,6 +489,10 @@ class ModeCContingency(OperatingMode):
         r = c.mode_c_contingency_ore1_milling_rate
 
         plant.ore_extraction.rate = r
+        if hasattr(plant, "total_cyanide_consumed"):
+            plant.total_cyanide_consumed.rate = r * getattr(c, "mode_c_contingency_avg_cyanide", 0.0)
+        if hasattr(plant, "total_ore_milled"):
+            plant.total_ore_milled.rate = r
         plant.ore_extracted_from_current_parcel.rate = r
         plant.ore_stock.rate = 0.0
         plant.ore1_stock.rate = r * (1.0 - p) - r
@@ -488,11 +500,6 @@ class ModeCContingency(OperatingMode):
 
         plant.ore1_stock.lower_threshold = 0.0
 
-        if hasattr(plant, "total_cyanide_consumed"):
-            milling_rate = c.mode_c_contingency_ore1_milling_rate
-            plant.total_cyanide_consumed.rate = (
-                milling_rate * plant.current_parcel_cyanide.value
-            )
 
         controller.time_mode_c_contingency.rate = 1.0
         controller.time_executed_campaign_shutdown.rate = 1.0
@@ -542,6 +549,11 @@ class ModeCMineSurging(OperatingMode):
         r = c.mode_c_ore1_milling_rate * 1.0 / (1.0 - p)
 
         plant.ore_extraction.rate = r
+        r_mill = c.mode_c_ore1_milling_rate + c.mode_c_ore2_milling_rate
+        if hasattr(plant, "total_cyanide_consumed"):
+            plant.total_cyanide_consumed.rate = r_mill * getattr(c, "mode_c_avg_cyanide", 0.0)
+        if hasattr(plant, "total_ore_milled"):
+            plant.total_ore_milled.rate = r_mill
         plant.ore_extracted_from_current_parcel.rate = r
         plant.ore_stock.rate = (
             r - c.mode_c_ore1_milling_rate - c.mode_c_ore2_milling_rate
@@ -552,9 +564,6 @@ class ModeCMineSurging(OperatingMode):
         plant.ore_stock.lower_threshold = c.target_ore_stock_level
         plant.ore2_stock.lower_threshold = 0.0
 
-        if hasattr(plant, "total_cyanide_consumed"):
-            milling_rate = c.mode_c_ore1_milling_rate + c.mode_c_ore2_milling_rate
-            plant.total_cyanide_consumed.rate = milling_rate * plant.current_parcel_cyanide.value
 
         controller.time_mode_c_surging.rate = 1.0
         controller.time_executed_campaign_shutdown.rate = 1.0
@@ -601,6 +610,10 @@ class ModeD(OperatingMode):
         r = c.mode_d_ore1_milling_rate + c.mode_d_ore2_milling_rate
 
         plant.ore_extraction.rate = r
+        if hasattr(plant, "total_cyanide_consumed"):
+            plant.total_cyanide_consumed.rate = r * getattr(c, "mode_d_avg_cyanide", 0.0)
+        if hasattr(plant, "total_ore_milled"):
+            plant.total_ore_milled.rate = r
         plant.ore_extracted_from_current_parcel.rate = r
         plant.ore_stock.rate = 0.0
         plant.ore1_stock.rate = r * (1.0 - p) - c.mode_d_ore1_milling_rate
@@ -609,9 +622,6 @@ class ModeD(OperatingMode):
         plant.ore1_stock.lower_threshold = 0.0
         plant.ore2_stock.lower_threshold = 0.0
 
-        if hasattr(plant, "total_cyanide_consumed"):
-            milling_rate = c.mode_d_ore1_milling_rate + c.mode_d_ore2_milling_rate
-            plant.total_cyanide_consumed.rate = milling_rate * plant.current_parcel_cyanide.value
 
         controller.time_mode_d.rate = 1.0
         controller.time_executed_campaign_shutdown.rate = 1.0
@@ -656,6 +666,10 @@ class ModeDContingency(OperatingMode):
         r = c.mode_d_contingency_ore2_milling_rate
 
         plant.ore_extraction.rate = r
+        if hasattr(plant, "total_cyanide_consumed"):
+            plant.total_cyanide_consumed.rate = r * getattr(c, "mode_d_contingency_avg_cyanide", 0.0)
+        if hasattr(plant, "total_ore_milled"):
+            plant.total_ore_milled.rate = r
         plant.ore_extracted_from_current_parcel.rate = r
         plant.ore_stock.rate = 0.0
         plant.ore1_stock.rate = r * (1.0 - p)
@@ -663,11 +677,6 @@ class ModeDContingency(OperatingMode):
 
         plant.ore2_stock.lower_threshold = 0.0
 
-        if hasattr(plant, "total_cyanide_consumed"):
-            milling_rate = c.mode_d_contingency_ore2_milling_rate
-            plant.total_cyanide_consumed.rate = (
-                milling_rate * plant.current_parcel_cyanide.value
-            )
 
         controller.time_mode_d_contingency.rate = 1.0
         controller.time_executed_campaign_shutdown.rate = 1.0
@@ -717,6 +726,11 @@ class ModeDMineSurging(OperatingMode):
         r = c.mode_d_ore2_milling_rate * 1.0 / p
 
         plant.ore_extraction.rate = r
+        r_mill = c.mode_d_ore1_milling_rate + c.mode_d_ore2_milling_rate
+        if hasattr(plant, "total_cyanide_consumed"):
+            plant.total_cyanide_consumed.rate = r_mill * getattr(c, "mode_d_avg_cyanide", 0.0)
+        if hasattr(plant, "total_ore_milled"):
+            plant.total_ore_milled.rate = r_mill
         plant.ore_extracted_from_current_parcel.rate = r
         plant.ore_stock.rate = (
             r - c.mode_d_ore1_milling_rate - c.mode_d_ore2_milling_rate
@@ -727,9 +741,6 @@ class ModeDMineSurging(OperatingMode):
         plant.ore_stock.lower_threshold = c.target_ore_stock_level
         plant.ore1_stock.lower_threshold = 0.0
 
-        if hasattr(plant, "total_cyanide_consumed"):
-            milling_rate = c.mode_d_ore1_milling_rate + c.mode_d_ore2_milling_rate
-            plant.total_cyanide_consumed.rate = milling_rate * plant.current_parcel_cyanide.value
 
         controller.time_mode_d_surging.rate = 1.0
         controller.time_executed_campaign_shutdown.rate = 1.0

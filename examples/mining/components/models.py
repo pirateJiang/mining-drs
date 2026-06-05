@@ -59,8 +59,8 @@ class BaseBlendingModel(drs.Module):
 
     def update_rates(self):
         self.global_time.rate = 1.0
-        self.plant.update_rates()
         self.controller.update_rates()
+        self.plant.update_rates()
 
     def is_terminating_condition_met(self) -> bool:
         # Terminate when the mine has extracted all its ore reserves
@@ -118,10 +118,12 @@ class BaseBlendingModel(drs.Module):
 
         active_time = total_time - self.controller.time_shutdown.value
         if active_time > 0:
-            throughput = (
-                self.plant.ore_extraction.value
-                - self.config.ore_to_be_extracted_during_warming_period
-            ) / active_time
+            if hasattr(self.plant, "total_ore_milled"):
+                total_ore_processed = self.plant.total_ore_milled.value
+            else:
+                total_ore_processed = self.plant.ore_extraction.value - self.config.ore_to_be_extracted_during_warming_period
+
+            throughput = total_ore_processed / active_time
             print(f"Throughput: {throughput:.4f} tons/day")
         else:
             print("Active time is 0. Cannot calculate throughput.")

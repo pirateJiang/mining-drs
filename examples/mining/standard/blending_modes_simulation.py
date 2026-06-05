@@ -289,7 +289,7 @@ if __name__ == "__main__":
             "func": plot_dual_axis_step,
             "kwargs": {
                 "y1_col": "MassOfCurrentParcel_State",
-                "y2_col": "PercentageOfOre2_State",
+                "y2_col": "CurrentParcelRoutingFraction_State",
                 "y1_label": "Parcel Mass (tons)",
                 "y2_label": "Grade (% Ore 2)",
                 "title": "Current Parcel Properties",

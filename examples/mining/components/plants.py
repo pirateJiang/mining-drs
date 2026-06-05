@@ -22,6 +22,7 @@ class BaseBlendingPlant(drs.Module):
         self.ore_stock = drs.Level(
             "OreStock_Level", initial_value=self.config.target_ore_stock_level
         )
+        self.total_ore_milled = drs.Level("TotalOreMilled_Level", initial_value=0.0)
         
         # Note: ore1_stock and ore2_stock initializations are deferred to the subclasses 
         # because the initial split logic depends on the specific plant's metric.
@@ -106,6 +107,7 @@ class CyanidationPlant(BaseBlendingPlant):
             initial_value=initial_ore2_fraction * self.config.target_ore_stock_level)
 
         self.total_cyanide_consumed = drs.Level("TotalCyanideConsumed_Level", initial_value=0.0)
+        self.current_mill_kpt = drs.State("current_mill_kpt", 0.0)
 
         self._load_next_batch()
 
@@ -114,6 +116,27 @@ class CyanidationPlant(BaseBlendingPlant):
         if trigger_var == self.ore_extraction and is_upper:
             if abs(self.ore_extraction.value - self.config.ore_to_be_extracted_during_warming_period) < 0.1:
                 self.total_cyanide_consumed.value = 0.0
+                self.total_ore_milled.value = 0.0
+
+    def update_rates(self):
+        super().update_rates()
+
+        # Incoming flow from Mine to Stockpiles
+        current_mining_rate = self.ore_extraction.rate 
+        route_frac = self.current_parcel_routing_fraction
+        incoming_ore_rate_2 = current_mining_rate * route_frac
+        incoming_ore_rate_1 = current_mining_rate * (1 - route_frac)
+
+        # Outgoing flow from Stockpiles to Mill
+        outgoing_ore_rate_1 = max(0.0, incoming_ore_rate_1 - self.ore1_stock.rate)
+        outgoing_ore_rate_2 = max(0.0, incoming_ore_rate_2 - self.ore2_stock.rate)
+
+        # total_cyanide_consumed.rate is now set by the operating modes directly
+        total_mill_ore_rate = outgoing_ore_rate_1 + outgoing_ore_rate_2
+        if total_mill_ore_rate > 0:
+            self.current_mill_kpt.value = self.total_cyanide_consumed.rate / total_mill_ore_rate
+        else:
+            self.current_mill_kpt.value = 0.0
 
     @property
     def current_parcel_routing_fraction(self) -> float:

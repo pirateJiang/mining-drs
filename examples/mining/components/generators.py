@@ -50,8 +50,8 @@ class CyanideGeostatisticalBlockGenerator(BaseOreGenerator):
         # The paper uses a nugget + two spherical models with anisotropy
         angles = np.deg2rad(35)  # Dip of 35 degrees
         self.model = gs.Spherical(
-            dim=2, var=0.31, len_scale=25, nugget=0.15
-        ) + gs.Spherical(dim=2, var=0.54, len_scale=150)
+            dim=2, var=0.31, len_scale=[25, 15], nugget=0.15, angles=angles
+        ) + gs.Spherical(dim=2, var=0.54, len_scale=[150, 90], angles=angles)
 
         # 2. Setup the spatial grid (e.g., the 2D bench-and-fill area)
         self.x = np.arange(0, 1200, 4)  # 4m x 4m blocks

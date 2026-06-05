@@ -579,8 +579,8 @@ def build_dashboard(df, plot_configs, title="Simulation Dashboard", figsize=(16,
 
 def plot_state_space(
     df,
-    col_x="TrueOre1Stock_Level",
-    col_y="TrueOre2Stock_Level",
+    col_x="TrueOre1Stock_mass",
+    col_y="TrueOre2Stock_mass",
     title="State Space Trajectory",
     ax=None,
 ):
@@ -867,8 +867,8 @@ def plot_normalized_deviation_violin(
     target_ore1=42000.0,
     target_ore2=18000.0,
     col_total="TrueOreStock_Level",
-    col_ore1="TrueOre1Stock_Level",
-    col_ore2="TrueOre2Stock_Level",
+    col_ore1="TrueOre1Stock_mass",
+    col_ore2="TrueOre2Stock_mass",
     ax=None
 ):
     """

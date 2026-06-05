@@ -8,6 +8,7 @@ from .supply_chain import (
 )
 from .controllers import ConcentratorController, CyanidationController
 from .models import ConcentratorModel, CyanidationModel
+from .stockpiles import Stockpile
 
 __all__ = [
     "BaseBlendingModel",
@@ -18,4 +19,7 @@ __all__ = [
     "BaseSensorNetwork",
     "ConcentratorSensorNetwork",
     "CyanidationSensorNetwork",
+    
+    # Nodes
+    "Stockpile",
 ]

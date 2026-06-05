@@ -1,5 +1,5 @@
 from drs.module import drs
-from drs.data import BaseOreGenerator
+from drs.data import BaseOreGenerator, MaterialFlow
 from .config import ConcentratorConfig, CyanidationConfig
 
 # ---------------------------------------------------------
@@ -19,6 +19,11 @@ class BaseMineFace(drs.Module):
 
     def _load_next_batch(self):
         raise NotImplementedError("Subclasses must define how to parse the OreParcel.")
+        
+    @property
+    def outgoing_flow(self) -> MaterialFlow:
+        """Constructs and returns the continuous flow spawned from the discrete block model."""
+        raise NotImplementedError("Subclasses must define how to construct the outgoing flow.")
 
     def check_transitions(self, trigger_var: drs.Variable = None, is_upper: bool = True):
         if trigger_var == self.true_ore_extracted_from_current_parcel and is_upper:
@@ -49,6 +54,11 @@ class ConcentratorMineFace(BaseMineFace):
         except StopIteration:
             pass
 
+    @property
+    def outgoing_flow(self) -> MaterialFlow:
+        r = self.true_ore_extraction.rate
+        grade = self.true_current_parcel_grade.value
+        return MaterialFlow(mass_rate=r, attributes={"grade": r * grade})
 
 
 class CyanidationMineFace(BaseMineFace):
@@ -64,6 +74,12 @@ class CyanidationMineFace(BaseMineFace):
             self.true_current_parcel_cyanide.value = getattr(parcel, "cyanide_kpt", getattr(parcel, "grade", 0.0))
         except StopIteration:
             pass
+            
+    @property
+    def outgoing_flow(self) -> MaterialFlow:
+        r = self.true_ore_extraction.rate
+        cyanide = self.true_current_parcel_cyanide.value
+        return MaterialFlow(mass_rate=r, attributes={"cyanide": r * cyanide})
 
 
 
@@ -79,7 +95,12 @@ class BaseFleetLogistics(drs.Module):
         # Pass-through rate
         self.true_transit_rate = 0.0
 
-
+    def route_flows(self, fraction_to_ore2: float):
+        """Splits the mine's outgoing flow based on a routing fraction."""
+        total_flow = self.mine.outgoing_flow
+        flow_to_ore2 = total_flow * fraction_to_ore2
+        flow_to_ore1 = total_flow * (1.0 - fraction_to_ore2)
+        return flow_to_ore1, flow_to_ore2
 
     def update_rates(self):
         # Perfect pass-through for now
@@ -116,14 +137,24 @@ class BaseMetallurgicalPlant(drs.Module):
         pass
 
 
+from .stockpiles import Stockpile
+
 class ConcentratorPlant(BaseMetallurgicalPlant):
     def __init__(self, config: ConcentratorConfig, fleet: BaseFleetLogistics):
         super().__init__(config, fleet)
         
         initial_fraction = self.config.mean_grade / self.config.grade_percentage_scale
 
-        self.true_ore1_stock = drs.Level("TrueOre1Stock_Level", initial_value=(1 - initial_fraction) * self.config.target_ore_stock_level)
-        self.true_ore2_stock = drs.Level("TrueOre2Stock_Level", initial_value=initial_fraction * self.config.target_ore_stock_level)
+        self.true_ore1_stock = Stockpile(
+            name="TrueOre1Stock",
+            expected_attributes=["grade"],
+            initial_mass=(1 - initial_fraction) * self.config.target_ore_stock_level
+        )
+        self.true_ore2_stock = Stockpile(
+            name="TrueOre2Stock",
+            expected_attributes=["grade"],
+            initial_mass=initial_fraction * self.config.target_ore_stock_level
+        )
 
     def update_rates(self):
         super().update_rates()
@@ -135,8 +166,16 @@ class CyanidationPlant(BaseMetallurgicalPlant):
         
         initial_ore2_fraction = 0.70
 
-        self.true_ore1_stock = drs.Level("TrueOre1Stock_Level", initial_value=(1 - initial_ore2_fraction) * self.config.target_ore_stock_level)
-        self.true_ore2_stock = drs.Level("TrueOre2Stock_Level", initial_value=initial_ore2_fraction * self.config.target_ore_stock_level)
+        self.true_ore1_stock = Stockpile(
+            name="TrueOre1Stock",
+            expected_attributes=["cyanide"],
+            initial_mass=(1 - initial_ore2_fraction) * self.config.target_ore_stock_level
+        )
+        self.true_ore2_stock = Stockpile(
+            name="TrueOre2Stock",
+            expected_attributes=["cyanide"],
+            initial_mass=initial_ore2_fraction * self.config.target_ore_stock_level
+        )
 
         self.true_total_cyanide_consumed = drs.Level("TrueTotalCyanideConsumed_Level", initial_value=0.0)
         self.true_current_mill_kpt = drs.State("true_current_mill_kpt", 0.0)

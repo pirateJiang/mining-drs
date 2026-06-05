@@ -54,11 +54,17 @@ class ModeA(OperatingMode):
             plant.true_total_ore_milled.rate = r
         mine.true_ore_extracted_from_current_parcel.rate = r
         plant.true_ore_stock.rate = sensors.belief_ore_stock.rate = 0.0
-        plant.true_ore1_stock.rate = sensors.belief_ore1_stock.rate = r * (1.0 - p) - c.mode_a_ore1_milling_rate
-        plant.true_ore2_stock.rate = sensors.belief_ore2_stock.rate = r * p - c.mode_a_ore2_milling_rate
+        flow1, flow2 = fleet.route_flows(p)
+        plant.true_ore1_stock.apply_inflow(flow1)
+        plant.true_ore2_stock.apply_inflow(flow2)
+        plant.true_ore1_stock.take_outflow(c.mode_a_ore1_milling_rate)
+        plant.true_ore2_stock.take_outflow(c.mode_a_ore2_milling_rate)
 
-        plant.true_ore1_stock.lower_threshold = sensors.belief_ore1_stock.lower_threshold = 0.0
-        plant.true_ore2_stock.lower_threshold = sensors.belief_ore2_stock.lower_threshold = 0.0
+        sensors.belief_ore1_stock.rate = r * (1.0 - p) - c.mode_a_ore1_milling_rate
+        sensors.belief_ore2_stock.rate = r * p - c.mode_a_ore2_milling_rate
+
+        plant.true_ore1_stock.mass.lower_threshold = sensors.belief_ore1_stock.lower_threshold = 0.0
+        plant.true_ore2_stock.mass.lower_threshold = sensors.belief_ore2_stock.lower_threshold = 0.0
 
 
         controller.time_mode_a.rate = 1.0
@@ -115,10 +121,16 @@ class ModeAContingency(OperatingMode):
             plant.true_total_ore_milled.rate = r
         mine.true_ore_extracted_from_current_parcel.rate = r
         plant.true_ore_stock.rate = sensors.belief_ore_stock.rate = 0.0
-        plant.true_ore1_stock.rate = sensors.belief_ore1_stock.rate = r * (1.0 - p) - r
-        plant.true_ore2_stock.rate = sensors.belief_ore2_stock.rate = r * p
+        flow1, flow2 = fleet.route_flows(p)
+        plant.true_ore1_stock.apply_inflow(flow1)
+        plant.true_ore2_stock.apply_inflow(flow2)
+        plant.true_ore1_stock.take_outflow(r)
+        plant.true_ore2_stock.take_outflow(0.0)
 
-        plant.true_ore1_stock.lower_threshold = sensors.belief_ore1_stock.lower_threshold = 0.0
+        sensors.belief_ore1_stock.rate = r * (1.0 - p) - r
+        sensors.belief_ore2_stock.rate = r * p
+
+        plant.true_ore1_stock.mass.lower_threshold = sensors.belief_ore1_stock.lower_threshold = 0.0
 
 
         controller.time_mode_a_contingency.rate = 1.0
@@ -185,11 +197,17 @@ class ModeAMineSurging(OperatingMode):
         plant.true_ore_stock.rate = sensors.belief_ore_stock.rate = (
             r - c.mode_a_ore1_milling_rate - c.mode_a_ore2_milling_rate
         )
-        plant.true_ore1_stock.rate = sensors.belief_ore1_stock.rate = 0.0
-        plant.true_ore2_stock.rate = sensors.belief_ore2_stock.rate = r * p - c.mode_a_ore2_milling_rate
+        flow1, flow2 = fleet.route_flows(p)
+        plant.true_ore1_stock.apply_inflow(flow1)
+        plant.true_ore2_stock.apply_inflow(flow2)
+        plant.true_ore1_stock.take_outflow(flow1.mass_rate)
+        plant.true_ore2_stock.take_outflow(c.mode_a_ore2_milling_rate)
+
+        sensors.belief_ore1_stock.rate = 0.0
+        sensors.belief_ore2_stock.rate = r * p - c.mode_a_ore2_milling_rate
 
         plant.true_ore_stock.lower_threshold = sensors.belief_ore_stock.lower_threshold = c.target_ore_stock_level
-        plant.true_ore2_stock.lower_threshold = sensors.belief_ore2_stock.lower_threshold = 0.0
+        plant.true_ore2_stock.mass.lower_threshold = sensors.belief_ore2_stock.lower_threshold = 0.0
 
 
         controller.time_mode_a_surging.rate = 1.0
@@ -248,11 +266,17 @@ class ModeB(OperatingMode):
             plant.true_total_ore_milled.rate = r
         mine.true_ore_extracted_from_current_parcel.rate = r
         plant.true_ore_stock.rate = sensors.belief_ore_stock.rate = 0.0
-        plant.true_ore1_stock.rate = sensors.belief_ore1_stock.rate = r * (1.0 - p) - c.mode_b_ore1_milling_rate
-        plant.true_ore2_stock.rate = sensors.belief_ore2_stock.rate = r * p - c.mode_b_ore2_milling_rate
+        flow1, flow2 = fleet.route_flows(p)
+        plant.true_ore1_stock.apply_inflow(flow1)
+        plant.true_ore2_stock.apply_inflow(flow2)
+        plant.true_ore1_stock.take_outflow(c.mode_b_ore1_milling_rate)
+        plant.true_ore2_stock.take_outflow(c.mode_b_ore2_milling_rate)
 
-        plant.true_ore1_stock.lower_threshold = sensors.belief_ore1_stock.lower_threshold = 0.0
-        plant.true_ore2_stock.lower_threshold = sensors.belief_ore2_stock.lower_threshold = 0.0
+        sensors.belief_ore1_stock.rate = r * (1.0 - p) - c.mode_b_ore1_milling_rate
+        sensors.belief_ore2_stock.rate = r * p - c.mode_b_ore2_milling_rate
+
+        plant.true_ore1_stock.mass.lower_threshold = sensors.belief_ore1_stock.lower_threshold = 0.0
+        plant.true_ore2_stock.mass.lower_threshold = sensors.belief_ore2_stock.lower_threshold = 0.0
 
 
         controller.time_mode_b.rate = 1.0
@@ -309,10 +333,16 @@ class ModeBContingency(OperatingMode):
             plant.true_total_ore_milled.rate = r
         mine.true_ore_extracted_from_current_parcel.rate = r
         plant.true_ore_stock.rate = sensors.belief_ore_stock.rate = 0.0
-        plant.true_ore1_stock.rate = sensors.belief_ore1_stock.rate = r * (1.0 - p)
-        plant.true_ore2_stock.rate = sensors.belief_ore2_stock.rate = r * p - r
+        flow1, flow2 = fleet.route_flows(p)
+        plant.true_ore1_stock.apply_inflow(flow1)
+        plant.true_ore2_stock.apply_inflow(flow2)
+        plant.true_ore1_stock.take_outflow(0.0)
+        plant.true_ore2_stock.take_outflow(r)
 
-        plant.true_ore2_stock.lower_threshold = sensors.belief_ore2_stock.lower_threshold = 0.0
+        sensors.belief_ore1_stock.rate = r * (1.0 - p)
+        sensors.belief_ore2_stock.rate = r * p - r
+
+        plant.true_ore2_stock.mass.lower_threshold = sensors.belief_ore2_stock.lower_threshold = 0.0
 
 
         controller.time_mode_b_contingency.rate = 1.0
@@ -379,11 +409,17 @@ class ModeBMineSurging(OperatingMode):
         plant.true_ore_stock.rate = sensors.belief_ore_stock.rate = (
             r - c.mode_b_ore1_milling_rate - c.mode_b_ore2_milling_rate
         )
-        plant.true_ore1_stock.rate = sensors.belief_ore1_stock.rate = r * (1.0 - p) - c.mode_b_ore1_milling_rate
-        plant.true_ore2_stock.rate = sensors.belief_ore2_stock.rate = 0.0
+        flow1, flow2 = fleet.route_flows(p)
+        plant.true_ore1_stock.apply_inflow(flow1)
+        plant.true_ore2_stock.apply_inflow(flow2)
+        plant.true_ore1_stock.take_outflow(c.mode_b_ore1_milling_rate)
+        plant.true_ore2_stock.take_outflow(flow2.mass_rate)
+
+        sensors.belief_ore1_stock.rate = r * (1.0 - p) - c.mode_b_ore1_milling_rate
+        sensors.belief_ore2_stock.rate = 0.0
 
         plant.true_ore_stock.lower_threshold = sensors.belief_ore_stock.lower_threshold = c.target_ore_stock_level
-        plant.true_ore1_stock.lower_threshold = sensors.belief_ore1_stock.lower_threshold = 0.0
+        plant.true_ore1_stock.mass.lower_threshold = sensors.belief_ore1_stock.lower_threshold = 0.0
 
 
         controller.time_mode_b_surging.rate = 1.0
@@ -476,11 +512,17 @@ class ModeC(OperatingMode):
             plant.true_total_ore_milled.rate = r
         mine.true_ore_extracted_from_current_parcel.rate = r
         plant.true_ore_stock.rate = sensors.belief_ore_stock.rate = 0.0
-        plant.true_ore1_stock.rate = sensors.belief_ore1_stock.rate = r * (1.0 - p) - c.mode_c_ore1_milling_rate
-        plant.true_ore2_stock.rate = sensors.belief_ore2_stock.rate = r * p - c.mode_c_ore2_milling_rate
+        flow1, flow2 = fleet.route_flows(p)
+        plant.true_ore1_stock.apply_inflow(flow1)
+        plant.true_ore2_stock.apply_inflow(flow2)
+        plant.true_ore1_stock.take_outflow(c.mode_c_ore1_milling_rate)
+        plant.true_ore2_stock.take_outflow(c.mode_c_ore2_milling_rate)
 
-        plant.true_ore1_stock.lower_threshold = sensors.belief_ore1_stock.lower_threshold = 0.0
-        plant.true_ore2_stock.lower_threshold = sensors.belief_ore2_stock.lower_threshold = 0.0
+        sensors.belief_ore1_stock.rate = r * (1.0 - p) - c.mode_c_ore1_milling_rate
+        sensors.belief_ore2_stock.rate = r * p - c.mode_c_ore2_milling_rate
+
+        plant.true_ore1_stock.mass.lower_threshold = sensors.belief_ore1_stock.lower_threshold = 0.0
+        plant.true_ore2_stock.mass.lower_threshold = sensors.belief_ore2_stock.lower_threshold = 0.0
 
 
         controller.time_mode_c.rate = 1.0
@@ -537,10 +579,16 @@ class ModeCContingency(OperatingMode):
             plant.true_total_ore_milled.rate = r
         mine.true_ore_extracted_from_current_parcel.rate = r
         plant.true_ore_stock.rate = sensors.belief_ore_stock.rate = 0.0
-        plant.true_ore1_stock.rate = sensors.belief_ore1_stock.rate = r * (1.0 - p) - r
-        plant.true_ore2_stock.rate = sensors.belief_ore2_stock.rate = r * p
+        flow1, flow2 = fleet.route_flows(p)
+        plant.true_ore1_stock.apply_inflow(flow1)
+        plant.true_ore2_stock.apply_inflow(flow2)
+        plant.true_ore1_stock.take_outflow(r)
+        plant.true_ore2_stock.take_outflow(0.0)
 
-        plant.true_ore1_stock.lower_threshold = sensors.belief_ore1_stock.lower_threshold = 0.0
+        sensors.belief_ore1_stock.rate = r * (1.0 - p) - r
+        sensors.belief_ore2_stock.rate = r * p
+
+        plant.true_ore1_stock.mass.lower_threshold = sensors.belief_ore1_stock.lower_threshold = 0.0
 
 
         controller.time_mode_c_contingency.rate = 1.0
@@ -605,11 +653,17 @@ class ModeCMineSurging(OperatingMode):
         plant.true_ore_stock.rate = sensors.belief_ore_stock.rate = (
             r - c.mode_c_ore1_milling_rate - c.mode_c_ore2_milling_rate
         )
-        plant.true_ore1_stock.rate = sensors.belief_ore1_stock.rate = 0.0
-        plant.true_ore2_stock.rate = sensors.belief_ore2_stock.rate = r * p - c.mode_c_ore2_milling_rate
+        flow1, flow2 = fleet.route_flows(p)
+        plant.true_ore1_stock.apply_inflow(flow1)
+        plant.true_ore2_stock.apply_inflow(flow2)
+        plant.true_ore1_stock.take_outflow(flow1.mass_rate)
+        plant.true_ore2_stock.take_outflow(c.mode_c_ore2_milling_rate)
+
+        sensors.belief_ore1_stock.rate = 0.0
+        sensors.belief_ore2_stock.rate = r * p - c.mode_c_ore2_milling_rate
 
         plant.true_ore_stock.lower_threshold = sensors.belief_ore_stock.lower_threshold = c.target_ore_stock_level
-        plant.true_ore2_stock.lower_threshold = sensors.belief_ore2_stock.lower_threshold = 0.0
+        plant.true_ore2_stock.mass.lower_threshold = sensors.belief_ore2_stock.lower_threshold = 0.0
 
 
         controller.time_mode_c_surging.rate = 1.0
@@ -668,11 +722,17 @@ class ModeD(OperatingMode):
             plant.true_total_ore_milled.rate = r
         mine.true_ore_extracted_from_current_parcel.rate = r
         plant.true_ore_stock.rate = sensors.belief_ore_stock.rate = 0.0
-        plant.true_ore1_stock.rate = sensors.belief_ore1_stock.rate = r * (1.0 - p) - c.mode_d_ore1_milling_rate
-        plant.true_ore2_stock.rate = sensors.belief_ore2_stock.rate = r * p - c.mode_d_ore2_milling_rate
+        flow1, flow2 = fleet.route_flows(p)
+        plant.true_ore1_stock.apply_inflow(flow1)
+        plant.true_ore2_stock.apply_inflow(flow2)
+        plant.true_ore1_stock.take_outflow(c.mode_d_ore1_milling_rate)
+        plant.true_ore2_stock.take_outflow(c.mode_d_ore2_milling_rate)
 
-        plant.true_ore1_stock.lower_threshold = sensors.belief_ore1_stock.lower_threshold = 0.0
-        plant.true_ore2_stock.lower_threshold = sensors.belief_ore2_stock.lower_threshold = 0.0
+        sensors.belief_ore1_stock.rate = r * (1.0 - p) - c.mode_d_ore1_milling_rate
+        sensors.belief_ore2_stock.rate = r * p - c.mode_d_ore2_milling_rate
+
+        plant.true_ore1_stock.mass.lower_threshold = sensors.belief_ore1_stock.lower_threshold = 0.0
+        plant.true_ore2_stock.mass.lower_threshold = sensors.belief_ore2_stock.lower_threshold = 0.0
 
 
         controller.time_mode_d.rate = 1.0
@@ -729,10 +789,16 @@ class ModeDContingency(OperatingMode):
             plant.true_total_ore_milled.rate = r
         mine.true_ore_extracted_from_current_parcel.rate = r
         plant.true_ore_stock.rate = sensors.belief_ore_stock.rate = 0.0
-        plant.true_ore1_stock.rate = sensors.belief_ore1_stock.rate = r * (1.0 - p)
-        plant.true_ore2_stock.rate = sensors.belief_ore2_stock.rate = r * p - r
+        flow1, flow2 = fleet.route_flows(p)
+        plant.true_ore1_stock.apply_inflow(flow1)
+        plant.true_ore2_stock.apply_inflow(flow2)
+        plant.true_ore1_stock.take_outflow(0.0)
+        plant.true_ore2_stock.take_outflow(r)
 
-        plant.true_ore2_stock.lower_threshold = sensors.belief_ore2_stock.lower_threshold = 0.0
+        sensors.belief_ore1_stock.rate = r * (1.0 - p)
+        sensors.belief_ore2_stock.rate = r * p - r
+
+        plant.true_ore2_stock.mass.lower_threshold = sensors.belief_ore2_stock.lower_threshold = 0.0
 
 
         controller.time_mode_d_contingency.rate = 1.0
@@ -797,11 +863,17 @@ class ModeDMineSurging(OperatingMode):
         plant.true_ore_stock.rate = sensors.belief_ore_stock.rate = (
             r - c.mode_d_ore1_milling_rate - c.mode_d_ore2_milling_rate
         )
-        plant.true_ore1_stock.rate = sensors.belief_ore1_stock.rate = r * (1.0 - p) - c.mode_d_ore1_milling_rate
-        plant.true_ore2_stock.rate = sensors.belief_ore2_stock.rate = 0.0
+        flow1, flow2 = fleet.route_flows(p)
+        plant.true_ore1_stock.apply_inflow(flow1)
+        plant.true_ore2_stock.apply_inflow(flow2)
+        plant.true_ore1_stock.take_outflow(c.mode_d_ore1_milling_rate)
+        plant.true_ore2_stock.take_outflow(flow2.mass_rate)
+
+        sensors.belief_ore1_stock.rate = r * (1.0 - p) - c.mode_d_ore1_milling_rate
+        sensors.belief_ore2_stock.rate = 0.0
 
         plant.true_ore_stock.lower_threshold = sensors.belief_ore_stock.lower_threshold = c.target_ore_stock_level
-        plant.true_ore1_stock.lower_threshold = sensors.belief_ore1_stock.lower_threshold = 0.0
+        plant.true_ore1_stock.mass.lower_threshold = sensors.belief_ore1_stock.lower_threshold = 0.0
 
 
         controller.time_mode_d_surging.rate = 1.0

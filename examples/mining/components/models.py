@@ -66,6 +66,27 @@ class BaseBlendingModel(drs.Module):
                 "Contingency_Timer",
                 lambda t, m, s, h: m.controller.time_executed_contingency.value,
             )
+            
+            # Add dynamic tracking for stockpile attributes
+            if hasattr(self.sensors, "belief_ore1_grade"):
+                self.telemetry.register_metric(
+                    "Belief_Ore1_Grade_State",
+                    lambda t, m, s, h: m.sensors.belief_ore1_grade.value,
+                )
+                self.telemetry.register_metric(
+                    "Belief_Ore2_Grade_State",
+                    lambda t, m, s, h: m.sensors.belief_ore2_grade.value,
+                )
+            
+            if hasattr(self.sensors, "belief_ore1_cyanide"):
+                self.telemetry.register_metric(
+                    "Belief_Ore1_Cyanide_State",
+                    lambda t, m, s, h: m.sensors.belief_ore1_cyanide.value,
+                )
+                self.telemetry.register_metric(
+                    "Belief_Ore2_Cyanide_State",
+                    lambda t, m, s, h: m.sensors.belief_ore2_cyanide.value,
+                )
 
     def update_rates(self):
         self.global_time.rate = 1.0

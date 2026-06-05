@@ -8,8 +8,8 @@ NAVARRA_STANDARD = (
 if str(NAVARRA_STANDARD) not in sys.path:
     sys.path.insert(0, str(NAVARRA_STANDARD))
 
-from blending_modes_simulation import (
-    ExampleMineModel,
+from examples.mining.components.modes import (
+    ConcentratorModel,
     ModeA,
     ModeAContingency,
     ModeAMineSurging,
@@ -21,7 +21,7 @@ from blending_modes_simulation import (
 
 
 def test_contingency_timer_resets_when_entering_mode_a_contingency():
-    sim = ExampleMineModel(MiningDRSConfig())
+    sim = ConcentratorModel(MiningDRSConfig())
     sim.controller.current_mode.value = ModeA()
     sim.controller.time_executed_contingency.value = 0.75
     sim.plant.ore2_stock.value = 0.0
@@ -33,7 +33,7 @@ def test_contingency_timer_resets_when_entering_mode_a_contingency():
 
 
 def test_contingency_timer_resets_when_entering_mode_b_contingency():
-    sim = ExampleMineModel(MiningDRSConfig())
+    sim = ConcentratorModel(MiningDRSConfig())
     sim.controller.current_mode.value = ModeB()
     sim.controller.time_executed_contingency.value = 0.75
     sim.plant.ore1_stock.value = 0.0
@@ -45,7 +45,7 @@ def test_contingency_timer_resets_when_entering_mode_b_contingency():
 
 
 def test_contingency_timer_resets_when_leaving_contingency():
-    sim = ExampleMineModel(MiningDRSConfig())
+    sim = ConcentratorModel(MiningDRSConfig())
     sim.controller.current_mode.value = ModeAContingency()
     sim.controller.time_executed_contingency.upper_threshold = (
         sim.controller.config.duration_of_contingency_segments
@@ -61,7 +61,7 @@ def test_contingency_timer_resets_when_leaving_contingency():
 
 
 def test_mine_surging_arms_component_ore_lower_bounds():
-    sim = ExampleMineModel(MiningDRSConfig())
+    sim = ConcentratorModel(MiningDRSConfig())
 
     sim.controller.current_mode.value = ModeAMineSurging()
     sim.update_rates()

@@ -150,7 +150,7 @@ if __name__ == "__main__":
             f"Time: {row['time']:.2f} | Transition: {row['prev_mode_name']} -> {row['current_mode_name']}"
         )
         print(
-            f"  ↳ Ore1 Stock: {row['TrueOre1Stock_Level']:.1f} | Ore2 Stock: {row['TrueOre2Stock_Level']:.1f} (Critical: {config.critical_ore2_level}) | Total Stock: {row['TrueOreStock_Level']:.1f} (Target: {config.target_ore_stock_level})"
+            f"  ↳ Ore1 Stock: {row['TrueOre1Stock_mass']:.1f} | Ore2 Stock: {row['TrueOre2Stock_mass']:.1f} (Critical: {config.critical_ore2_level}) | Total Stock: {row['TrueOreStock_Level']:.1f} (Target: {config.target_ore_stock_level})"
         )
         print(
             f"  ↳ Campaign/Shutdown Timer: {row['TimeExecutedInCurrentCampaignOrShutdown_Timer']:.2f} | Contingency Timer: {row['TimeExecutedInCurrentContingencySegment_Timer']:.2f}"
@@ -213,8 +213,8 @@ if __name__ == "__main__":
 
     # Create Ore Level Series (scaled by 1000)
     df["Total Ore Stockpile Level"] = df["TrueOreStock_Level"] / 1000.0
-    df["Ore 1 Stockpile Level"] = df["TrueOre1Stock_Level"] / 1000.0
-    df["Ore 2 Stockpile Level"] = df["TrueOre2Stock_Level"] / 1000.0
+    df["Ore 1 Stockpile Level"] = df["TrueOre1Stock_mass"] / 1000.0
+    df["Ore 2 Stockpile Level"] = df["TrueOre2Stock_mass"] / 1000.0
 
     from drs.plot import (
         plot_time_series,
@@ -260,7 +260,7 @@ if __name__ == "__main__":
             "func": plot_ore_with_modes,
             "kwargs": {
                 "time_col": "time",
-                "ore_cols": ["TrueOreStock_Level", "TrueOre1Stock_Level", "TrueOre2Stock_Level"],
+                "ore_cols": ["TrueOreStock_Level", "TrueOre1Stock_mass", "TrueOre2Stock_mass"],
                 "mode_col": "current_mode_name",
                 "campaign_split_mode": "SHUTDOWN",
                 "title": "Ore Stockpiles & Campaigns",
@@ -298,7 +298,7 @@ if __name__ == "__main__":
         {
             "func": plot_safety_margin,
             "kwargs": {
-                "level_col": "TrueOre1Stock_Level",
+                "level_col": "TrueOre1Stock_mass",
                 "constraint_value": 0.0,
                 "constraint_type": "lower",
                 "title": "Safety Margin: Ore 1 Distance to Floor",
@@ -308,7 +308,7 @@ if __name__ == "__main__":
         {
             "func": plot_safety_margin,
             "kwargs": {
-                "level_col": "TrueOre2Stock_Level",
+                "level_col": "TrueOre2Stock_mass",
                 "constraint_value": 0.0,
                 "constraint_type": "lower",
                 "title": "Safety Margin: Ore 2 Distance to Floor",

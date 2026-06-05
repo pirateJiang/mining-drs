@@ -32,14 +32,17 @@ class BaseSensorNetwork(drs.Module):
         self.belief_ore_stock.rate = self.plant.true_ore_stock.rate
         
         if self.belief_ore1_stock is not None:
-            self.belief_ore1_stock.rate = self.plant.true_ore1_stock.rate
-            self.belief_ore1_stock.lower_threshold = self.plant.true_ore1_stock.lower_threshold
+            self.belief_ore1_stock.rate = self.plant.true_ore1_stock.mass.rate
+            self.belief_ore1_stock.lower_threshold = self.plant.true_ore1_stock.mass.lower_threshold
         if self.belief_ore2_stock is not None:
-            self.belief_ore2_stock.rate = self.plant.true_ore2_stock.rate
-            self.belief_ore2_stock.lower_threshold = self.plant.true_ore2_stock.lower_threshold
+            self.belief_ore2_stock.rate = self.plant.true_ore2_stock.mass.rate
+            self.belief_ore2_stock.lower_threshold = self.plant.true_ore2_stock.mass.lower_threshold
             
         self.belief_ore_stock.lower_threshold = self.plant.true_ore_stock.lower_threshold
 
+
+import random
+import numpy as np
 
 class ConcentratorSensorNetwork(BaseSensorNetwork):
     def __init__(self, config: ConcentratorConfig, mine, fleet, plant):
@@ -51,6 +54,8 @@ class ConcentratorSensorNetwork(BaseSensorNetwork):
         self.belief_ore2_stock = drs.Level("BeliefOre2Stock_Level", initial_value=initial_fraction * self.config.target_ore_stock_level)
 
         self.belief_current_parcel_grade = drs.State("belief_parcel_grade", 0.0)
+        self.belief_ore1_grade = drs.State("belief_ore1_grade", 0.0)
+        self.belief_ore2_grade = drs.State("belief_ore2_grade", 0.0)
 
     @property
     def belief_routing_fraction(self) -> float:
@@ -59,6 +64,12 @@ class ConcentratorSensorNetwork(BaseSensorNetwork):
     def update_rates(self):
         super().update_rates()
         self.belief_current_parcel_grade.value = self.mine.true_current_parcel_grade.value
+
+        true_ore1_grade = self.plant.true_ore1_stock.current_concentration("grade")
+        self.belief_ore1_grade.value = max(0.0, true_ore1_grade + float(np.random.normal(0, 0.1)))
+
+        true_ore2_grade = self.plant.true_ore2_stock.current_concentration("grade")
+        self.belief_ore2_grade.value = max(0.0, true_ore2_grade + float(np.random.normal(0, 0.1)))
 
 
 class CyanidationSensorNetwork(BaseSensorNetwork):
@@ -71,6 +82,8 @@ class CyanidationSensorNetwork(BaseSensorNetwork):
         self.belief_ore2_stock = drs.Level("BeliefOre2Stock_Level", initial_value=initial_ore2_fraction * self.config.target_ore_stock_level)
 
         self.belief_current_parcel_cyanide = drs.State("belief_parcel_cyanide", 0.0)
+        self.belief_ore1_cyanide = drs.State("belief_ore1_cyanide", 0.0)
+        self.belief_ore2_cyanide = drs.State("belief_ore2_cyanide", 0.0)
 
     @property
     def belief_routing_fraction(self) -> float:
@@ -84,3 +97,9 @@ class CyanidationSensorNetwork(BaseSensorNetwork):
     def update_rates(self):
         super().update_rates()
         self.belief_current_parcel_cyanide.value = self.mine.true_current_parcel_cyanide.value
+
+        true_ore1_cyanide = self.plant.true_ore1_stock.current_concentration("cyanide")
+        self.belief_ore1_cyanide.value = max(0.0, true_ore1_cyanide + random.gauss(0, 0.1))
+
+        true_ore2_cyanide = self.plant.true_ore2_stock.current_concentration("cyanide")
+        self.belief_ore2_cyanide.value = max(0.0, true_ore2_cyanide + random.gauss(0, 0.1))

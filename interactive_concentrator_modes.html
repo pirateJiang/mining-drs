@@ -1,0 +1,149 @@
+<html>
+    <head>
+        <meta charset="utf-8">
+        
+            <script src="lib/bindings/utils.js"></script>
+            <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.2/dist/dist/vis-network.min.css" integrity="sha512-WgxfT5LWjfszlPHXRmBWHkV2eceiWTOBvrKCNbdgDYTHrT2AeLCGbF4sZlZw3UMN3WtL0tGUoIAKsu8mllg/XA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+            <script src="https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.2/dist/vis-network.min.js" integrity="sha512-LnvoEWDFrqGHlHmDD2101OrLcbsfkrzoSpvtSQtxK3RMnRV0eOkhhBN2dXHKRrUU8p2DGRTk35n4O8nWSVe1mQ==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+            
+        
+<center>
+<h1></h1>
+</center>
+
+<!-- <link rel="stylesheet" href="../node_modules/vis/dist/vis.min.css" type="text/css" />
+<script type="text/javascript" src="../node_modules/vis/dist/vis.js"> </script>-->
+        <link
+          href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.0-beta3/dist/css/bootstrap.min.css"
+          rel="stylesheet"
+          integrity="sha384-eOJMYsd53ii+scO/bJGFsiCZc+5NDVN2yr8+0RDqr0Ql0h+rP48ckxlpbzKgwra6"
+          crossorigin="anonymous"
+        />
+        <script
+          src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.0-beta3/dist/js/bootstrap.bundle.min.js"
+          integrity="sha384-JEW9xMcG8R+pH31jmWH6WWP0WintQrMb4s7ZOdauHnUtxwoG2vI5DkLtS3qm9Ekf"
+          crossorigin="anonymous"
+        ></script>
+
+
+        <center>
+          <h1></h1>
+        </center>
+        <style type="text/css">
+
+             #mynetwork {
+                 width: 100%;
+                 height: 800px;
+                 background-color: #ffffff;
+                 border: 1px solid lightgray;
+                 position: relative;
+                 float: left;
+             }
+
+             
+
+             
+
+             
+        </style>
+    </head>
+
+
+    <body>
+        <div class="card" style="width: 100%">
+            
+            
+            <div id="mynetwork" class="card-body"></div>
+        </div>
+
+        
+        
+
+        <script type="text/javascript">
+
+              // initialize global variables.
+              var edges;
+              var nodes;
+              var allNodes;
+              var allEdges;
+              var nodeColors;
+              var originalNodes;
+              var network;
+              var container;
+              var options, data;
+              var filter = {
+                  item : '',
+                  property : '',
+                  value : []
+              };
+
+              
+
+              
+
+              // This method is responsible for drawing the graph, returns the drawn network
+              function drawGraph() {
+                  var container = document.getElementById('mynetwork');
+
+                  
+
+                  // parsing and collecting nodes and edges from the python
+                  nodes = new vis.DataSet([{"color": "#90EE90", "id": "Fleet", "label": "Fleet", "shape": "box", "size": 10}, {"color": "#ADD8E6", "id": "TrueOre1Stock", "label": "Ore 1Stockpile", "shape": "box", "size": 10}, {"color": "#ADD8E6", "id": "TrueOre2Stock", "label": "Ore 2Stockpile", "shape": "box", "size": 10}, {"color": "#FFB6C1", "id": "Sink", "label": "Processing Plant", "shape": "box", "size": 10}, {"color": "#90EE90", "id": "Source", "label": "Mine Extraction", "shape": "box", "size": 10}]);
+                  edges = new vis.DataSet([{"arrows": "to", "font": {"align": "middle", "size": 10}, "from": "Fleet", "id": "Fleet_to_TrueOre1Stock", "to": "TrueOre1Stock", "width": 1}, {"arrows": "to", "font": {"align": "middle", "size": 10}, "from": "Fleet", "id": "Fleet_to_TrueOre2Stock", "to": "TrueOre2Stock", "width": 1}, {"arrows": "to", "font": {"align": "middle", "size": 10}, "from": "TrueOre1Stock", "id": "Ore1_To_Mill", "to": "Sink", "width": 1}, {"arrows": "to", "font": {"align": "middle", "size": 10}, "from": "TrueOre2Stock", "id": "Ore2_To_Mill", "to": "Sink", "width": 1}, {"arrows": "to", "font": {"align": "middle", "size": 10}, "from": "Source", "id": "Mine_To_Fleet", "to": "Fleet", "width": 1}]);
+
+                  nodeColors = {};
+                  allNodes = nodes.get({ returnType: "Object" });
+                  for (nodeId in allNodes) {
+                    nodeColors[nodeId] = allNodes[nodeId].color;
+                  }
+                  allEdges = edges.get({ returnType: "Object" });
+                  // adding nodes and edges to the graph
+                  data = {nodes: nodes, edges: edges};
+
+                  var options = {"physics": {"barnesHut": {"gravitationalConstant": -30000, "centralGravity": 0.3, "springLength": 100, "springConstant": 0.04, "damping": 0.09, "avoidOverlap": 1}, "minVelocity": 0.75}};
+
+                  
+
+
+                  
+
+                  network = new vis.Network(container, data, options);
+
+                  
+
+                  
+
+                  
+
+
+                  
+
+                  return network;
+
+              }
+              drawGraph();
+        </script>
+    
+        <div style="position: absolute; top: 20px; left: 20px; z-index: 9999; background: rgba(255,255,255,0.9); padding: 15px; border-radius: 8px; box-shadow: 0px 4px 6px rgba(0,0,0,0.1); font-family: sans-serif;">
+            <h3 style="margin-top: 0; font-size: 16px;">System State</h3>
+            <select id="modeDropdown" onchange="changeMode()" style="font-size: 14px; padding: 5px; width: 100%;">
+                <option value='MODE_A'>MODE_A</option><option value='MODE_A_CONTINGENCY'>MODE_A_CONTINGENCY</option><option value='MODE_A_MINE_SURGING'>MODE_A_MINE_SURGING</option><option value='MODE_B'>MODE_B</option><option value='MODE_B_CONTINGENCY'>MODE_B_CONTINGENCY</option><option value='MODE_B_MINE_SURGING'>MODE_B_MINE_SURGING</option><option value='SHUTDOWN'>SHUTDOWN</option>
+            </select>
+        </div>
+        <script>
+            var snapshots = {"MODE_A": {"nodes": [{"id": "Fleet", "title": "<div style='font-family:sans-serif; min-width:180px;'><h4 style='margin:0 0 5px 0;'>Fleet</h4><hr style='margin:5px 0;'><table style='font-size:12px; margin-bottom:5px;'><tr><td style='padding-right:10px;'><b>MASS</b></td><td>0.0 t</td></tr><tr><td></td><td style='color:black; font-size:11px;'>\u0394 0.0 t/d</td></tr><tr><td></td><td style='color:gray; font-size:11px;'>Limits: [-\u221e, \u221e]</td></tr><tr><td style='padding-right:10px;'><b>GRADE</b></td><td>0.00%</td></tr><tr><td></td><td style='color:green; font-size:11px;'>\u0394 N/A (Intensive)</td></tr><tr><td></td><td style='color:gray; font-size:11px;'>Limits: [-\u221e, \u221e]</td></tr></table></div>", "label": "Fleet\nFlow: 6,000/d"}, {"id": "TrueOre1Stock", "title": "<div style='font-family:sans-serif; min-width:180px;'><h4 style='margin:0 0 5px 0;'>Ore 1Stockpile</h4><hr style='margin:5px 0;'><table style='font-size:12px; margin-bottom:5px;'><tr><td style='padding-right:10px;'><b>MASS</b></td><td>42,000.0 t</td></tr><tr><td></td><td style='color:green; font-size:11px;'>\u0394 600.0 t/d</td></tr><tr><td></td><td style='color:gray; font-size:11px;'>Limits: [0.0, \u221e]</td></tr><tr><td style='padding-right:10px;'><b>GRADE</b></td><td>30.00%</td></tr><tr><td></td><td style='color:green; font-size:11px;'>\u0394 N/A (Intensive)</td></tr><tr><td></td><td style='color:gray; font-size:11px;'>Limits: [-\u221e, \u221e]</td></tr></table></div>", "label": "Ore 1Stockpile\nIn: 4,200 | Out: 3,600"}, {"id": "TrueOre2Stock", "title": "<div style='font-family:sans-serif; min-width:180px;'><h4 style='margin:0 0 5px 0;'>Ore 2Stockpile</h4><hr style='margin:5px 0;'><table style='font-size:12px; margin-bottom:5px;'><tr><td style='padding-right:10px;'><b>MASS</b></td><td>18,000.0 t</td></tr><tr><td></td><td style='color:red; font-size:11px;'>\u0394 -600.0 t/d</td></tr><tr><td></td><td style='color:gray; font-size:11px;'>Limits: [0.0, \u221e]</td></tr><tr><td style='padding-right:10px;'><b>GRADE</b></td><td>30.00%</td></tr><tr><td></td><td style='color:red; font-size:11px;'>\u0394 N/A (Intensive)</td></tr><tr><td></td><td style='color:gray; font-size:11px;'>Limits: [-\u221e, \u221e]</td></tr></table></div>", "label": "Ore 2Stockpile\nIn: 1,800 | Out: 2,400"}], "edges": [{"id": "Fleet_to_TrueOre1Stock", "title": "<b>Fleet_to_Ore 1Stockpile</b><br>Mass: 4,200 t/d<br>Grade: 30.00%", "label": "Mass: 4,200 t/d\nGrade: 30.00%", "width": 3, "color": "#666666"}, {"id": "Fleet_to_TrueOre2Stock", "title": "<b>Fleet_to_Ore 2Stockpile</b><br>Mass: 1,800 t/d<br>Grade: 30.00%", "label": "Mass: 1,800 t/d\nGrade: 30.00%", "width": 3, "color": "#666666"}, {"id": "Mine_To_Fleet", "title": "<b>Mine_To_Fleet</b><br>Mass: 6,000 t/d<br>Grade: 30.00%", "label": "Mass: 6,000 t/d\nGrade: 30.00%", "width": 3, "color": "#666666"}, {"id": "Ore1_To_Mill", "title": "<b>Ore 1_To_Mill</b><br>Mass: 3,600 t/d<br>Grade: 30.00%", "label": "Mass: 3,600 t/d\nGrade: 30.00%", "width": 3, "color": "#666666"}, {"id": "Ore2_To_Mill", "title": "<b>Ore 2_To_Mill</b><br>Mass: 2,400 t/d<br>Grade: 30.00%", "label": "Mass: 2,400 t/d\nGrade: 30.00%", "width": 3, "color": "#666666"}]}, "MODE_A_CONTINGENCY": {"nodes": [{"id": "Fleet", "title": "<div style='font-family:sans-serif; min-width:180px;'><h4 style='margin:0 0 5px 0;'>Fleet</h4><hr style='margin:5px 0;'><table style='font-size:12px; margin-bottom:5px;'><tr><td style='padding-right:10px;'><b>MASS</b></td><td>0.0 t</td></tr><tr><td></td><td style='color:black; font-size:11px;'>\u0394 0.0 t/d</td></tr><tr><td></td><td style='color:gray; font-size:11px;'>Limits: [-\u221e, \u221e]</td></tr><tr><td style='padding-right:10px;'><b>GRADE</b></td><td>0.00%</td></tr><tr><td></td><td style='color:black; font-size:11px;'>\u0394 N/A (Intensive)</td></tr><tr><td></td><td style='color:gray; font-size:11px;'>Limits: [-\u221e, \u221e]</td></tr></table></div>", "label": "Fleet\nFlow: 3,900/d"}, {"id": "TrueOre1Stock", "title": "<div style='font-family:sans-serif; min-width:180px;'><h4 style='margin:0 0 5px 0;'>Ore 1Stockpile</h4><hr style='margin:5px 0;'><table style='font-size:12px; margin-bottom:5px;'><tr><td style='padding-right:10px;'><b>MASS</b></td><td>42,000.0 t</td></tr><tr><td></td><td style='color:red; font-size:11px;'>\u0394 -1,170.0 t/d</td></tr><tr><td></td><td style='color:gray; font-size:11px;'>Limits: [0.0, \u221e]</td></tr><tr><td style='padding-right:10px;'><b>GRADE</b></td><td>30.00%</td></tr><tr><td></td><td style='color:red; font-size:11px;'>\u0394 N/A (Intensive)</td></tr><tr><td></td><td style='color:gray; font-size:11px;'>Limits: [-\u221e, \u221e]</td></tr></table></div>", "label": "Ore 1Stockpile\nIn: 2,730 | Out: 3,900"}, {"id": "TrueOre2Stock", "title": "<div style='font-family:sans-serif; min-width:180px;'><h4 style='margin:0 0 5px 0;'>Ore 2Stockpile</h4><hr style='margin:5px 0;'><table style='font-size:12px; margin-bottom:5px;'><tr><td style='padding-right:10px;'><b>MASS</b></td><td>18,000.0 t</td></tr><tr><td></td><td style='color:green; font-size:11px;'>\u0394 1,170.0 t/d</td></tr><tr><td></td><td style='color:gray; font-size:11px;'>Limits: [0.0, \u221e]</td></tr><tr><td style='padding-right:10px;'><b>GRADE</b></td><td>30.00%</td></tr><tr><td></td><td style='color:green; font-size:11px;'>\u0394 N/A (Intensive)</td></tr><tr><td></td><td style='color:gray; font-size:11px;'>Limits: [-\u221e, \u221e]</td></tr></table></div>", "label": "Ore 2Stockpile\nIn: 1,170/d"}], "edges": [{"id": "Fleet_to_TrueOre1Stock", "title": "<b>Fleet_to_Ore 1Stockpile</b><br>Mass: 2,730 t/d<br>Grade: 30.00%", "label": "Mass: 2,730 t/d\nGrade: 30.00%", "width": 3, "color": "#666666"}, {"id": "Fleet_to_TrueOre2Stock", "title": "<b>Fleet_to_Ore 2Stockpile</b><br>Mass: 1,170 t/d<br>Grade: 30.00%", "label": "Mass: 1,170 t/d\nGrade: 30.00%", "width": 3, "color": "#666666"}, {"id": "Mine_To_Fleet", "title": "<b>Mine_To_Fleet</b><br>Mass: 3,900 t/d<br>Grade: 30.00%", "label": "Mass: 3,900 t/d\nGrade: 30.00%", "width": 3, "color": "#666666"}, {"id": "Ore1_To_Mill", "title": "<b>Ore 1_To_Mill</b><br>Mass: 3,900 t/d<br>Grade: 30.00%", "label": "Mass: 3,900 t/d\nGrade: 30.00%", "width": 3, "color": "#666666"}, {"id": "Ore2_To_Mill", "title": "<b>Ore 2_To_Mill</b><br>Idle", "label": "Idle", "width": 1, "color": "#D3D3D3"}]}, "MODE_A_MINE_SURGING": {"nodes": [{"id": "Fleet", "title": "<div style='font-family:sans-serif; min-width:180px;'><h4 style='margin:0 0 5px 0;'>Fleet</h4><hr style='margin:5px 0;'><table style='font-size:12px; margin-bottom:5px;'><tr><td style='padding-right:10px;'><b>MASS</b></td><td>0.0 t</td></tr><tr><td></td><td style='color:green; font-size:11px;'>\u0394 0.0 t/d</td></tr><tr><td></td><td style='color:gray; font-size:11px;'>Limits: [-\u221e, \u221e]</td></tr><tr><td style='padding-right:10px;'><b>GRADE</b></td><td>0.00%</td></tr><tr><td></td><td style='color:green; font-size:11px;'>\u0394 N/A (Intensive)</td></tr><tr><td></td><td style='color:gray; font-size:11px;'>Limits: [-\u221e, \u221e]</td></tr></table></div>", "label": "Fleet\nFlow: 5,143/d"}, {"id": "TrueOre1Stock", "title": "<div style='font-family:sans-serif; min-width:180px;'><h4 style='margin:0 0 5px 0;'>Ore 1Stockpile</h4><hr style='margin:5px 0;'><table style='font-size:12px; margin-bottom:5px;'><tr><td style='padding-right:10px;'><b>MASS</b></td><td>42,000.0 t</td></tr><tr><td></td><td style='color:black; font-size:11px;'>\u0394 0.0 t/d</td></tr><tr><td></td><td style='color:gray; font-size:11px;'>Limits: [0.0, \u221e]</td></tr><tr><td style='padding-right:10px;'><b>GRADE</b></td><td>30.00%</td></tr><tr><td></td><td style='color:black; font-size:11px;'>\u0394 N/A (Intensive)</td></tr><tr><td></td><td style='color:gray; font-size:11px;'>Limits: [-\u221e, \u221e]</td></tr></table></div>", "label": "Ore 1Stockpile\nFlow: 3,600/d"}, {"id": "TrueOre2Stock", "title": "<div style='font-family:sans-serif; min-width:180px;'><h4 style='margin:0 0 5px 0;'>Ore 2Stockpile</h4><hr style='margin:5px 0;'><table style='font-size:12px; margin-bottom:5px;'><tr><td style='padding-right:10px;'><b>MASS</b></td><td>18,000.0 t</td></tr><tr><td></td><td style='color:red; font-size:11px;'>\u0394 -857.1 t/d</td></tr><tr><td></td><td style='color:gray; font-size:11px;'>Limits: [0.0, \u221e]</td></tr><tr><td style='padding-right:10px;'><b>GRADE</b></td><td>30.00%</td></tr><tr><td></td><td style='color:red; font-size:11px;'>\u0394 N/A (Intensive)</td></tr><tr><td></td><td style='color:gray; font-size:11px;'>Limits: [-\u221e, \u221e]</td></tr></table></div>", "label": "Ore 2Stockpile\nIn: 1,543 | Out: 2,400"}], "edges": [{"id": "Fleet_to_TrueOre1Stock", "title": "<b>Fleet_to_Ore 1Stockpile</b><br>Mass: 3,600 t/d<br>Grade: 30.00%", "label": "Mass: 3,600 t/d\nGrade: 30.00%", "width": 3, "color": "#666666"}, {"id": "Fleet_to_TrueOre2Stock", "title": "<b>Fleet_to_Ore 2Stockpile</b><br>Mass: 1,543 t/d<br>Grade: 30.00%", "label": "Mass: 1,543 t/d\nGrade: 30.00%", "width": 3, "color": "#666666"}, {"id": "Mine_To_Fleet", "title": "<b>Mine_To_Fleet</b><br>Mass: 5,143 t/d<br>Grade: 30.00%", "label": "Mass: 5,143 t/d\nGrade: 30.00%", "width": 3, "color": "#666666"}, {"id": "Ore1_To_Mill", "title": "<b>Ore 1_To_Mill</b><br>Mass: 3,600 t/d<br>Grade: 30.00%", "label": "Mass: 3,600 t/d\nGrade: 30.00%", "width": 3, "color": "#666666"}, {"id": "Ore2_To_Mill", "title": "<b>Ore 2_To_Mill</b><br>Mass: 2,400 t/d<br>Grade: 30.00%", "label": "Mass: 2,400 t/d\nGrade: 30.00%", "width": 3, "color": "#666666"}]}, "MODE_B": {"nodes": [{"id": "Fleet", "title": "<div style='font-family:sans-serif; min-width:180px;'><h4 style='margin:0 0 5px 0;'>Fleet</h4><hr style='margin:5px 0;'><table style='font-size:12px; margin-bottom:5px;'><tr><td style='padding-right:10px;'><b>MASS</b></td><td>0.0 t</td></tr><tr><td></td><td style='color:green; font-size:11px;'>\u0394 0.0 t/d</td></tr><tr><td></td><td style='color:gray; font-size:11px;'>Limits: [-\u221e, \u221e]</td></tr><tr><td style='padding-right:10px;'><b>GRADE</b></td><td>0.00%</td></tr><tr><td></td><td style='color:black; font-size:11px;'>\u0394 N/A (Intensive)</td></tr><tr><td></td><td style='color:gray; font-size:11px;'>Limits: [-\u221e, \u221e]</td></tr></table></div>", "label": "Fleet\nFlow: 5,400/d"}, {"id": "TrueOre1Stock", "title": "<div style='font-family:sans-serif; min-width:180px;'><h4 style='margin:0 0 5px 0;'>Ore 1Stockpile</h4><hr style='margin:5px 0;'><table style='font-size:12px; margin-bottom:5px;'><tr><td style='padding-right:10px;'><b>MASS</b></td><td>42,000.0 t</td></tr><tr><td></td><td style='color:red; font-size:11px;'>\u0394 -820.0 t/d</td></tr><tr><td></td><td style='color:gray; font-size:11px;'>Limits: [0.0, \u221e]</td></tr><tr><td style='padding-right:10px;'><b>GRADE</b></td><td>30.00%</td></tr><tr><td></td><td style='color:red; font-size:11px;'>\u0394 N/A (Intensive)</td></tr><tr><td></td><td style='color:gray; font-size:11px;'>Limits: [-\u221e, \u221e]</td></tr></table></div>", "label": "Ore 1Stockpile\nIn: 3,780 | Out: 4,600"}, {"id": "TrueOre2Stock", "title": "<div style='font-family:sans-serif; min-width:180px;'><h4 style='margin:0 0 5px 0;'>Ore 2Stockpile</h4><hr style='margin:5px 0;'><table style='font-size:12px; margin-bottom:5px;'><tr><td style='padding-right:10px;'><b>MASS</b></td><td>18,000.0 t</td></tr><tr><td></td><td style='color:green; font-size:11px;'>\u0394 820.0 t/d</td></tr><tr><td></td><td style='color:gray; font-size:11px;'>Limits: [0.0, \u221e]</td></tr><tr><td style='padding-right:10px;'><b>GRADE</b></td><td>30.00%</td></tr><tr><td></td><td style='color:green; font-size:11px;'>\u0394 N/A (Intensive)</td></tr><tr><td></td><td style='color:gray; font-size:11px;'>Limits: [-\u221e, \u221e]</td></tr></table></div>", "label": "Ore 2Stockpile\nIn: 1,620 | Out: 800"}], "edges": [{"id": "Fleet_to_TrueOre1Stock", "title": "<b>Fleet_to_Ore 1Stockpile</b><br>Mass: 3,780 t/d<br>Grade: 30.00%", "label": "Mass: 3,780 t/d\nGrade: 30.00%", "width": 3, "color": "#666666"}, {"id": "Fleet_to_TrueOre2Stock", "title": "<b>Fleet_to_Ore 2Stockpile</b><br>Mass: 1,620 t/d<br>Grade: 30.00%", "label": "Mass: 1,620 t/d\nGrade: 30.00%", "width": 3, "color": "#666666"}, {"id": "Mine_To_Fleet", "title": "<b>Mine_To_Fleet</b><br>Mass: 5,400 t/d<br>Grade: 30.00%", "label": "Mass: 5,400 t/d\nGrade: 30.00%", "width": 3, "color": "#666666"}, {"id": "Ore1_To_Mill", "title": "<b>Ore 1_To_Mill</b><br>Mass: 4,600 t/d<br>Grade: 30.00%", "label": "Mass: 4,600 t/d\nGrade: 30.00%", "width": 3, "color": "#666666"}, {"id": "Ore2_To_Mill", "title": "<b>Ore 2_To_Mill</b><br>Mass: 800 t/d<br>Grade: 30.00%", "label": "Mass: 800 t/d\nGrade: 30.00%", "width": 3, "color": "#666666"}]}, "MODE_B_CONTINGENCY": {"nodes": [{"id": "Fleet", "title": "<div style='font-family:sans-serif; min-width:180px;'><h4 style='margin:0 0 5px 0;'>Fleet</h4><hr style='margin:5px 0;'><table style='font-size:12px; margin-bottom:5px;'><tr><td style='padding-right:10px;'><b>MASS</b></td><td>0.0 t</td></tr><tr><td></td><td style='color:black; font-size:11px;'>\u0394 0.0 t/d</td></tr><tr><td></td><td style='color:gray; font-size:11px;'>Limits: [-\u221e, \u221e]</td></tr><tr><td style='padding-right:10px;'><b>GRADE</b></td><td>0.00%</td></tr><tr><td></td><td style='color:black; font-size:11px;'>\u0394 N/A (Intensive)</td></tr><tr><td></td><td style='color:gray; font-size:11px;'>Limits: [-\u221e, \u221e]</td></tr></table></div>", "label": "Fleet\nFlow: 2,500/d"}, {"id": "TrueOre1Stock", "title": "<div style='font-family:sans-serif; min-width:180px;'><h4 style='margin:0 0 5px 0;'>Ore 1Stockpile</h4><hr style='margin:5px 0;'><table style='font-size:12px; margin-bottom:5px;'><tr><td style='padding-right:10px;'><b>MASS</b></td><td>42,000.0 t</td></tr><tr><td></td><td style='color:green; font-size:11px;'>\u0394 1,750.0 t/d</td></tr><tr><td></td><td style='color:gray; font-size:11px;'>Limits: [0.0, \u221e]</td></tr><tr><td style='padding-right:10px;'><b>GRADE</b></td><td>30.00%</td></tr><tr><td></td><td style='color:green; font-size:11px;'>\u0394 N/A (Intensive)</td></tr><tr><td></td><td style='color:gray; font-size:11px;'>Limits: [-\u221e, \u221e]</td></tr></table></div>", "label": "Ore 1Stockpile\nIn: 1,750/d"}, {"id": "TrueOre2Stock", "title": "<div style='font-family:sans-serif; min-width:180px;'><h4 style='margin:0 0 5px 0;'>Ore 2Stockpile</h4><hr style='margin:5px 0;'><table style='font-size:12px; margin-bottom:5px;'><tr><td style='padding-right:10px;'><b>MASS</b></td><td>18,000.0 t</td></tr><tr><td></td><td style='color:red; font-size:11px;'>\u0394 -1,750.0 t/d</td></tr><tr><td></td><td style='color:gray; font-size:11px;'>Limits: [0.0, \u221e]</td></tr><tr><td style='padding-right:10px;'><b>GRADE</b></td><td>30.00%</td></tr><tr><td></td><td style='color:red; font-size:11px;'>\u0394 N/A (Intensive)</td></tr><tr><td></td><td style='color:gray; font-size:11px;'>Limits: [-\u221e, \u221e]</td></tr></table></div>", "label": "Ore 2Stockpile\nIn: 750 | Out: 2,500"}], "edges": [{"id": "Fleet_to_TrueOre1Stock", "title": "<b>Fleet_to_Ore 1Stockpile</b><br>Mass: 1,750 t/d<br>Grade: 30.00%", "label": "Mass: 1,750 t/d\nGrade: 30.00%", "width": 3, "color": "#666666"}, {"id": "Fleet_to_TrueOre2Stock", "title": "<b>Fleet_to_Ore 2Stockpile</b><br>Mass: 750 t/d<br>Grade: 30.00%", "label": "Mass: 750 t/d\nGrade: 30.00%", "width": 3, "color": "#666666"}, {"id": "Mine_To_Fleet", "title": "<b>Mine_To_Fleet</b><br>Mass: 2,500 t/d<br>Grade: 30.00%", "label": "Mass: 2,500 t/d\nGrade: 30.00%", "width": 3, "color": "#666666"}, {"id": "Ore1_To_Mill", "title": "<b>Ore 1_To_Mill</b><br>Idle", "label": "Idle", "width": 1, "color": "#D3D3D3"}, {"id": "Ore2_To_Mill", "title": "<b>Ore 2_To_Mill</b><br>Mass: 2,500 t/d<br>Grade: 30.00%", "label": "Mass: 2,500 t/d\nGrade: 30.00%", "width": 3, "color": "#666666"}]}, "MODE_B_MINE_SURGING": {"nodes": [{"id": "Fleet", "title": "<div style='font-family:sans-serif; min-width:180px;'><h4 style='margin:0 0 5px 0;'>Fleet</h4><hr style='margin:5px 0;'><table style='font-size:12px; margin-bottom:5px;'><tr><td style='padding-right:10px;'><b>MASS</b></td><td>0.0 t</td></tr><tr><td></td><td style='color:green; font-size:11px;'>\u0394 0.0 t/d</td></tr><tr><td></td><td style='color:gray; font-size:11px;'>Limits: [-\u221e, \u221e]</td></tr><tr><td style='padding-right:10px;'><b>GRADE</b></td><td>0.00%</td></tr><tr><td></td><td style='color:green; font-size:11px;'>\u0394 N/A (Intensive)</td></tr><tr><td></td><td style='color:gray; font-size:11px;'>Limits: [-\u221e, \u221e]</td></tr></table></div>", "label": "Fleet\nFlow: 2,667/d"}, {"id": "TrueOre1Stock", "title": "<div style='font-family:sans-serif; min-width:180px;'><h4 style='margin:0 0 5px 0;'>Ore 1Stockpile</h4><hr style='margin:5px 0;'><table style='font-size:12px; margin-bottom:5px;'><tr><td style='padding-right:10px;'><b>MASS</b></td><td>42,000.0 t</td></tr><tr><td></td><td style='color:red; font-size:11px;'>\u0394 -2,733.3 t/d</td></tr><tr><td></td><td style='color:gray; font-size:11px;'>Limits: [0.0, \u221e]</td></tr><tr><td style='padding-right:10px;'><b>GRADE</b></td><td>30.00%</td></tr><tr><td></td><td style='color:red; font-size:11px;'>\u0394 N/A (Intensive)</td></tr><tr><td></td><td style='color:gray; font-size:11px;'>Limits: [-\u221e, \u221e]</td></tr></table></div>", "label": "Ore 1Stockpile\nIn: 1,867 | Out: 4,600"}, {"id": "TrueOre2Stock", "title": "<div style='font-family:sans-serif; min-width:180px;'><h4 style='margin:0 0 5px 0;'>Ore 2Stockpile</h4><hr style='margin:5px 0;'><table style='font-size:12px; margin-bottom:5px;'><tr><td style='padding-right:10px;'><b>MASS</b></td><td>18,000.0 t</td></tr><tr><td></td><td style='color:black; font-size:11px;'>\u0394 0.0 t/d</td></tr><tr><td></td><td style='color:gray; font-size:11px;'>Limits: [0.0, \u221e]</td></tr><tr><td style='padding-right:10px;'><b>GRADE</b></td><td>30.00%</td></tr><tr><td></td><td style='color:black; font-size:11px;'>\u0394 N/A (Intensive)</td></tr><tr><td></td><td style='color:gray; font-size:11px;'>Limits: [-\u221e, \u221e]</td></tr></table></div>", "label": "Ore 2Stockpile\nFlow: 800/d"}], "edges": [{"id": "Fleet_to_TrueOre1Stock", "title": "<b>Fleet_to_Ore 1Stockpile</b><br>Mass: 1,867 t/d<br>Grade: 30.00%", "label": "Mass: 1,867 t/d\nGrade: 30.00%", "width": 3, "color": "#666666"}, {"id": "Fleet_to_TrueOre2Stock", "title": "<b>Fleet_to_Ore 2Stockpile</b><br>Mass: 800 t/d<br>Grade: 30.00%", "label": "Mass: 800 t/d\nGrade: 30.00%", "width": 3, "color": "#666666"}, {"id": "Mine_To_Fleet", "title": "<b>Mine_To_Fleet</b><br>Mass: 2,667 t/d<br>Grade: 30.00%", "label": "Mass: 2,667 t/d\nGrade: 30.00%", "width": 3, "color": "#666666"}, {"id": "Ore1_To_Mill", "title": "<b>Ore 1_To_Mill</b><br>Mass: 4,600 t/d<br>Grade: 30.00%", "label": "Mass: 4,600 t/d\nGrade: 30.00%", "width": 3, "color": "#666666"}, {"id": "Ore2_To_Mill", "title": "<b>Ore 2_To_Mill</b><br>Mass: 800 t/d<br>Grade: 30.00%", "label": "Mass: 800 t/d\nGrade: 30.00%", "width": 3, "color": "#666666"}]}, "SHUTDOWN": {"nodes": [{"id": "Fleet", "title": "<div style='font-family:sans-serif; min-width:180px;'><h4 style='margin:0 0 5px 0;'>Fleet</h4><hr style='margin:5px 0;'><table style='font-size:12px; margin-bottom:5px;'><tr><td style='padding-right:10px;'><b>MASS</b></td><td>0.0 t</td></tr><tr><td></td><td style='color:black; font-size:11px;'>\u0394 0.0 t/d</td></tr><tr><td></td><td style='color:gray; font-size:11px;'>Limits: [-\u221e, \u221e]</td></tr><tr><td style='padding-right:10px;'><b>GRADE</b></td><td>0.00%</td></tr><tr><td></td><td style='color:black; font-size:11px;'>\u0394 N/A (Intensive)</td></tr><tr><td></td><td style='color:gray; font-size:11px;'>Limits: [-\u221e, \u221e]</td></tr></table></div>", "label": "Fleet\nIdle"}, {"id": "TrueOre1Stock", "title": "<div style='font-family:sans-serif; min-width:180px;'><h4 style='margin:0 0 5px 0;'>Ore 1Stockpile</h4><hr style='margin:5px 0;'><table style='font-size:12px; margin-bottom:5px;'><tr><td style='padding-right:10px;'><b>MASS</b></td><td>42,000.0 t</td></tr><tr><td></td><td style='color:black; font-size:11px;'>\u0394 0.0 t/d</td></tr><tr><td></td><td style='color:gray; font-size:11px;'>Limits: [0.0, \u221e]</td></tr><tr><td style='padding-right:10px;'><b>GRADE</b></td><td>30.00%</td></tr><tr><td></td><td style='color:black; font-size:11px;'>\u0394 N/A (Intensive)</td></tr><tr><td></td><td style='color:gray; font-size:11px;'>Limits: [-\u221e, \u221e]</td></tr></table></div>", "label": "Ore 1Stockpile\nIdle"}, {"id": "TrueOre2Stock", "title": "<div style='font-family:sans-serif; min-width:180px;'><h4 style='margin:0 0 5px 0;'>Ore 2Stockpile</h4><hr style='margin:5px 0;'><table style='font-size:12px; margin-bottom:5px;'><tr><td style='padding-right:10px;'><b>MASS</b></td><td>18,000.0 t</td></tr><tr><td></td><td style='color:black; font-size:11px;'>\u0394 0.0 t/d</td></tr><tr><td></td><td style='color:gray; font-size:11px;'>Limits: [0.0, \u221e]</td></tr><tr><td style='padding-right:10px;'><b>GRADE</b></td><td>30.00%</td></tr><tr><td></td><td style='color:black; font-size:11px;'>\u0394 N/A (Intensive)</td></tr><tr><td></td><td style='color:gray; font-size:11px;'>Limits: [-\u221e, \u221e]</td></tr></table></div>", "label": "Ore 2Stockpile\nIdle"}], "edges": [{"id": "Fleet_to_TrueOre1Stock", "title": "<b>Fleet_to_Ore 1Stockpile</b><br>Idle", "label": "Idle", "width": 1, "color": "#D3D3D3"}, {"id": "Fleet_to_TrueOre2Stock", "title": "<b>Fleet_to_Ore 2Stockpile</b><br>Idle", "label": "Idle", "width": 1, "color": "#D3D3D3"}, {"id": "Mine_To_Fleet", "title": "<b>Mine_To_Fleet</b><br>Idle", "label": "Idle", "width": 1, "color": "#D3D3D3"}, {"id": "Ore1_To_Mill", "title": "<b>Ore 1_To_Mill</b><br>Idle", "label": "Idle", "width": 1, "color": "#D3D3D3"}, {"id": "Ore2_To_Mill", "title": "<b>Ore 2_To_Mill</b><br>Idle", "label": "Idle", "width": 1, "color": "#D3D3D3"}]}};
+            function changeMode() {
+                var mode = document.getElementById("modeDropdown").value;
+                var data = JSON.parse(JSON.stringify(snapshots[mode]));
+                
+                data.nodes.forEach(n => { if (typeof n.title === 'string') { let el = document.createElement('div'); el.innerHTML = n.title; n.title = el; } });
+                data.edges.forEach(e => { if (typeof e.title === 'string') { let el = document.createElement('div'); el.innerHTML = e.title; e.title = el; } });
+                
+                nodes.update(data.nodes);
+                edges.update(data.edges);
+            }
+            window.onload = function() { setTimeout(changeMode, 500); };
+        </script>
+        
+</body>
+</html>

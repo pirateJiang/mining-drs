@@ -93,22 +93,23 @@ class BaseBlendingModel(drs.Module):
         """Wires physical Nodes together with Edges."""
         self.supply_network = Network()
         
+        # Add isolated nodes to the network first (so they receive the _network_ref)
         self.supply_network.add_node(self.fleet)
         self.supply_network.add_node(self.plant.true_ore1_stock)
         self.supply_network.add_node(self.plant.true_ore2_stock)
         
-        # Define Edges (Mine has no source Node; we inject manually. Mill has no target Node)
+        # THE NEW FLUENT WIRING:
+        self.fleet >> self.plant.true_ore1_stock
+        self.fleet >> self.plant.true_ore2_stock
+        
+        # Manual injection edges from/to the environment can still be created normally
         attr_list = ["mass"] + expected_attributes
         self.edge_mine_to_fleet = Edge("Mine_To_Fleet", source=None, target=self.fleet, attributes=attr_list)
-        self.edge_fleet_to_ore1 = Edge("Fleet_To_Ore1", source=self.fleet, target=self.plant.true_ore1_stock, attributes=attr_list)
-        self.edge_fleet_to_ore2 = Edge("Fleet_To_Ore2", source=self.fleet, target=self.plant.true_ore2_stock, attributes=attr_list)
         self.edge_ore1_to_mill = Edge("Ore1_To_Mill", source=self.plant.true_ore1_stock, target=None, attributes=attr_list)
         self.edge_ore2_to_mill = Edge("Ore2_To_Mill", source=self.plant.true_ore2_stock, target=None, attributes=attr_list)
         
         # Register and sort Graph
         self.supply_network.add_edge(self.edge_mine_to_fleet)
-        self.supply_network.add_edge(self.edge_fleet_to_ore1)
-        self.supply_network.add_edge(self.edge_fleet_to_ore2)
         self.supply_network.add_edge(self.edge_ore1_to_mill)
         self.supply_network.add_edge(self.edge_ore2_to_mill)
         self.supply_network.compile()

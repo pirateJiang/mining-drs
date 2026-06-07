@@ -128,6 +128,30 @@ if __name__ == "__main__":
         std_dev_grade=args.std_dev_grade,
     )
     sim = ConcentratorModel(config, enable_telemetry=True)
+    
+    # Generates an interactive dashboard spanning all operating modes
+    from examples.mining.components.modes import ModeA, ModeAContingency, ModeAMineSurging, ModeB, ModeBContingency, ModeBMineSurging, Shutdown
+    from drs.visualizer import TopologyVisualizer
+    
+    modes_to_test = [
+        ModeA(), ModeAContingency(), ModeAMineSurging(),
+        ModeB(), ModeBContingency(), ModeBMineSurging(),
+        Shutdown()
+    ]
+    
+    visualizer = TopologyVisualizer(sim.supply_network)
+    
+    for mode in modes_to_test:
+        sim.controller.current_mode.value = mode
+        sim.update_rates() 
+        visualizer.capture_mode_state(mode.name)
+        
+    visualizer.build("interactive_concentrator_modes.html")
+    
+    # Reset controller state back to ModeA before time simulation begins
+    sim.controller.current_mode.value = ModeA()
+    sim.update_rates()
+    
     engine = DRSEngine(sim)
     engine.run(max_time=config.replication_length)
     sim.print_statistics()

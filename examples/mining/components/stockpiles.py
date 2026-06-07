@@ -1,16 +1,7 @@
 from typing import List, Dict, Optional
-from drs.module import Module
-from drs.variables import Level
-from drs.data import MaterialFlow
+from drs.network import Node
 
-
-# TODO: should this be in nodes.py does that make sense? also this is mining specific. i dont want mining specific stuff in my DRS. Maybe it would be interesting though to try and make this DRS both a DRS and a sort of acyclical graph type thing. So have a concept of a Node Module and a Edge Module or something.
-class Stockpile(Module):
-    """
-    A physical stockpile node that integrates mass and trace attributes dynamically.
-    Instead of tracking only mass, it integrates every expected attribute of a MaterialFlow.
-    """
-
+class Stockpile(Node):
     def __init__(
         self,
         name: str,
@@ -18,53 +9,50 @@ class Stockpile(Module):
         initial_mass: float = 0.0,
         initial_attributes: Optional[Dict[str, float]] = None,
     ):
-        super().__init__()
-        self.name = name
+        # Initialize Node with mass and trace attributes
+        super().__init__(name, attributes=["mass"] + expected_attributes)
         self.expected_attributes = expected_attributes
-
-        # Mass level (the Carrier Fluid)
-        self.mass = Level(f"{name}_mass", initial_value=initial_mass)
-
-        # Dictionary storing Level variables for each trace element/attribute
-        self.attributes: Dict[str, Level] = {}
-
+        self.target_mass_outflow = 0.0
+        
+        # Backwards Compatibility: Force Level names to match legacy telemetry perfectly
+        self.accumulations["mass"].name = f"{name}_mass"
+        self.accumulations["mass"].value = initial_mass
+        
         initial_attributes = initial_attributes or {}
-
         for attr in expected_attributes:
-            init_val = initial_attributes.get(attr, 0.0)
-            # Create a Level for this attribute
-            level = Level(f"{name}_{attr}", initial_value=init_val)
-            self.attributes[attr] = level
-            # We must register the Variable to the Module so the engine finds it
-            setattr(self, f"_attr_level_{attr}", level)
+            self.accumulations[attr].name = f"{name}_{attr}"
+            self.accumulations[attr].value = initial_attributes.get(attr, 0.0)
 
-    def apply_inflow(self, flow: MaterialFlow):
-        """Applies an incoming MaterialFlow to the rates of the stockpile."""
-        self.mass.rate += flow.mass_rate
-        for attr, attr_rate in flow.attributes.items():
-            if attr in self.attributes:
-                self.attributes[attr].rate += attr_rate
-
-    def apply_outflow(self, flow: MaterialFlow):
-        """Applies an outgoing MaterialFlow to the rates of the stockpile."""
-        self.mass.rate -= flow.mass_rate
-        for attr, attr_rate in flow.attributes.items():
-            if attr in self.attributes:
-                self.attributes[attr].rate -= attr_rate
+        # Backwards Compatibility: Provide original variable aliases used by the Engine/Plots
+        self.mass = self.accumulations["mass"]
+        self.attributes = {attr: self.accumulations[attr] for attr in expected_attributes}
 
     def current_concentration(self, attr: str) -> float:
-        """Calculates the current concentration of a trace attribute."""
         if attr not in self.attributes:
             return 0.0
         safe_mass = max(1e-6, self.mass.value)
         return self.attributes[attr].value / safe_mass
 
-    def take_outflow(self, mass_rate: float) -> MaterialFlow:
-        """Constructs an outgoing MaterialFlow based on current concentration and applies it to rates."""
-        attrs = {}
-        for attr in self.attributes.keys():
-            attrs[attr] = mass_rate * self.current_concentration(attr)
+    def set_target_outflow(self, mass_rate: float):
+        """Replaces take_outflow(). Defines the mass requested by the mill for this tick."""
+        self.target_mass_outflow = mass_rate
+
+    def resolve_outgoing_flow(self):
+        """The Network orchestrates this. Automatically applies trace concentrations to outflows."""
+        if not self.out_edges:
+            return
+        
+        # Push proportional trace elements down the outgoing edge to the mill
+        out_edge = self.out_edges[0]
+        
+        # Prevent deadlock: clamp outflow if stockpile is empty
+        actual_outflow = self.target_mass_outflow
+        if self.mass.value <= 1e-6:
+            inflow = sum(edge.flow_rates.get("mass", 0.0) for edge in self.in_edges)
+            actual_outflow = min(actual_outflow, inflow)
             
-        flow = MaterialFlow(mass_rate, attributes=attrs)
-        self.apply_outflow(flow)
-        return flow
+        rates = {"mass": actual_outflow}
+        for attr in self.expected_attributes:
+            rates[attr] = actual_outflow * self.current_concentration(attr)
+            
+        out_edge.set_rates(rates)

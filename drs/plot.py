@@ -667,9 +667,8 @@ def plot_mode_distribution(
         return ax
 
     # Calculate exact duration for each active mode window
-    df_sorted = df.sort_values(time_col).copy()
-    df_sorted["dt"] = df_sorted[time_col].diff().shift(-1)
-    df_sorted["dt"] = df_sorted["dt"].fillna(0)  # Last point duration is 0
+    df_sorted = df.copy()
+    df_sorted["dt"] = df_sorted[time_col].diff().shift(-1).fillna(0)
 
     # Cast mode column to string to avoid Enum sorting errors in pandas groupby
     df_sorted["mode_str"] = df_sorted[mode_col].apply(
@@ -810,10 +809,13 @@ def plot_mode_dwell_times(df, time_col="time", mode_col="current_mode", title="M
     # This pandas trick creates a unique ID for each contiguous block of the same mode
     blocks = (df[mode_col] != df[mode_col].shift(1)).cumsum().rename("block")
 
+    # Calculate exact duration for each active mode window by taking forward diff
+    # so that the interval [time[i], time[i+1]] is correctly attributed to mode[i]
+    df["dt"] = df[time_col].diff().shift(-1).fillna(0)
+    
     # Calculate duration of each block
     durations = (
-        df.groupby([blocks, mode_col])[time_col]
-        .apply(lambda x: x.iloc[-1] - x.iloc[0])
+        df.groupby([blocks, mode_col])["dt"].sum()
         .reset_index()
     )
     durations.columns = ["block", "mode", "duration"]
@@ -945,9 +947,9 @@ def plot_attributed_deficit(df, time_col="time", mode_col="current_mode", extrac
     else:
         own_ax = False
 
-    # 1. Calculate time delta (dt) and extraction delta for each step
-    dt = df[time_col].diff().fillna(0)
-    actual_extraction_step = df[extraction_col].diff().fillna(0)
+    # 1. Calculate time delta (dt) and extraction delta for each step looking forward
+    dt = df[time_col].diff().shift(-1).fillna(0)
+    actual_extraction_step = df[extraction_col].diff().shift(-1).fillna(0)
     
     # 2. Calculate ideal extraction for that step, and find the deficit
     ideal_extraction_step = dt * ideal_rate_per_day
@@ -1018,11 +1020,11 @@ def plot_deficit_disparity(df, time_col="time", mode_col="current_mode", extract
     else:
         own_ax = False
 
-    # 1. Calculate time deltas and actual extraction
+    # 1. Calculate time deltas and actual extraction looking forward
     df = df.copy()
     df[mode_col] = df[mode_col].astype(str)
-    df['dt'] = df[time_col].diff().fillna(0)
-    df['dx'] = df[extraction_col].diff().fillna(0)
+    df['dt'] = df[time_col].diff().shift(-1).fillna(0)
+    df['dx'] = df[extraction_col].diff().shift(-1).fillna(0)
     
     # 2. Calculate instantaneous deficit
     df['ideal_dx'] = df['dt'] * ideal_rate
@@ -1144,8 +1146,8 @@ def plot_deficit_breakdown_bar(df, time_col="time", mode_col="current_mode", ext
 
     # 1. Calculate deficit
     df = df.copy()
-    df['dt'] = df[time_col].diff().fillna(0)
-    df['dx'] = df[extraction_col].diff().fillna(0)
+    df['dt'] = df[time_col].diff().shift(-1).fillna(0)
+    df['dx'] = df[extraction_col].diff().shift(-1).fillna(0)
     df['deficit'] = ((df['dt'] * ideal_rate_per_day) - df['dx']).clip(lower=0)
     df['mode_str'] = df[mode_col].astype(str).apply(lambda x: x.split('.')[-1])
 
@@ -1209,8 +1211,8 @@ def plot_structural_vs_operational_deficit(df, time_col="time", mode_col="curren
         own_ax = False
 
     df = df.copy()
-    df['dt'] = df[time_col].diff().fillna(0)
-    df['dx'] = df[extraction_col].diff().fillna(0)
+    df['dt'] = df[time_col].diff().shift(-1).fillna(0)
+    df['dx'] = df[extraction_col].diff().shift(-1).fillna(0)
     df['deficit'] = ((df['dt'] * ideal_rate) - df['dx']).clip(lower=0)
     df['mode_str'] = df[mode_col].astype(str)
 
@@ -1268,8 +1270,8 @@ def plot_normalized_cumulative_deficit(df, time_col="time", mode_col="current_mo
         own_ax = False
 
     df = df.copy()
-    df['dt'] = df[time_col].diff().fillna(0)
-    df['dx'] = df[extraction_col].diff().fillna(0)
+    df['dt'] = df[time_col].diff().shift(-1).fillna(0)
+    df['dx'] = df[extraction_col].diff().shift(-1).fillna(0)
     df['deficit'] = ((df['dt'] * ideal_rate_per_day) - df['dx']).clip(lower=0)
     df['mode_str'] = df[mode_col].astype(str).apply(lambda x: x.split('.')[-1])
 
@@ -1318,8 +1320,8 @@ def plot_structural_vs_operational_by_mode(df, time_col="time", mode_col="curren
         own_ax = False
 
     df = df.copy()
-    df['dt'] = df[time_col].diff().fillna(0)
-    df['dx'] = df[extraction_col].diff().fillna(0)
+    df['dt'] = df[time_col].diff().shift(-1).fillna(0)
+    df['dx'] = df[extraction_col].diff().shift(-1).fillna(0)
     df['deficit'] = ((df['dt'] * ideal_rate) - df['dx']).clip(lower=0)
     df['mode_str'] = df[mode_col].astype(str).apply(lambda x: x.split('.')[-1])
 

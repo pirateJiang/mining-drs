@@ -54,11 +54,12 @@ class ModeA(OperatingMode):
             plant.true_total_ore_milled.rate = r
         mine.true_ore_extracted_from_current_parcel.rate = r
         plant.true_ore_stock.rate = sensors.belief_ore_stock.rate = 0.0
-        flow1, flow2 = fleet.route_flows(p)
-        plant.true_ore1_stock.apply_inflow(flow1)
-        plant.true_ore2_stock.apply_inflow(flow2)
-        plant.true_ore1_stock.take_outflow(c.mode_a_ore1_milling_rate)
-        plant.true_ore2_stock.take_outflow(c.mode_a_ore2_milling_rate)
+        # 1. Set the Fleet Routing Policy
+        fleet.fraction_to_ore2 = p
+        
+        # 2. Set the requested Outflow for the Mill 
+        plant.true_ore1_stock.set_target_outflow(c.mode_a_ore1_milling_rate)
+        plant.true_ore2_stock.set_target_outflow(c.mode_a_ore2_milling_rate)
 
         sensors.belief_ore1_stock.rate = r * (1.0 - p) - c.mode_a_ore1_milling_rate
         sensors.belief_ore2_stock.rate = r * p - c.mode_a_ore2_milling_rate
@@ -121,11 +122,12 @@ class ModeAContingency(OperatingMode):
             plant.true_total_ore_milled.rate = r
         mine.true_ore_extracted_from_current_parcel.rate = r
         plant.true_ore_stock.rate = sensors.belief_ore_stock.rate = 0.0
-        flow1, flow2 = fleet.route_flows(p)
-        plant.true_ore1_stock.apply_inflow(flow1)
-        plant.true_ore2_stock.apply_inflow(flow2)
-        plant.true_ore1_stock.take_outflow(r)
-        plant.true_ore2_stock.take_outflow(0.0)
+        # 1. Set the Fleet Routing Policy
+        fleet.fraction_to_ore2 = p
+        
+        # 2. Set the requested Outflow for the Mill 
+        plant.true_ore1_stock.set_target_outflow(r)
+        plant.true_ore2_stock.set_target_outflow(0.0)
 
         sensors.belief_ore1_stock.rate = r * (1.0 - p) - r
         sensors.belief_ore2_stock.rate = r * p
@@ -165,13 +167,12 @@ class ModeAMineSurging(OperatingMode):
         if controller.is_campaign_complete():
             return RequireDecision()
 
-        # NOTE: Cross-stockout physical preemption added here.
-        # If Ore 2 runs out while surging, the plant drops into ModeAContingency.
-        if sensors.belief_ore2_stock.value <= plant.config.stockout_epsilon:
-            controller.reset_contingency_timer()
-            return ModeAContingency()
+        # Cross-stockout physical preemption logic has been removed to match Arena behavior.
 
-        if sensors.belief_ore_stock.value <= plant.config.target_ore_stock_level:
+        # THE ORIGINAL ARENA FIX: 
+        # Only evaluate the target floor constraint if the stockpile is actively draining (Rate < 0).
+        # During mid-campaign surging, rate > 0, so this safely evaluates to False and prevents the deadlock.
+        if sensors.belief_ore_stock.rate < 0 and sensors.belief_ore_stock.value <= plant.config.target_ore_stock_level:
             return RequireDecision()
 
         return None
@@ -197,11 +198,12 @@ class ModeAMineSurging(OperatingMode):
         plant.true_ore_stock.rate = sensors.belief_ore_stock.rate = (
             r - c.mode_a_ore1_milling_rate - c.mode_a_ore2_milling_rate
         )
-        flow1, flow2 = fleet.route_flows(p)
-        plant.true_ore1_stock.apply_inflow(flow1)
-        plant.true_ore2_stock.apply_inflow(flow2)
-        plant.true_ore1_stock.take_outflow(flow1.mass_rate)
-        plant.true_ore2_stock.take_outflow(c.mode_a_ore2_milling_rate)
+        # 1. Set the Fleet Routing Policy
+        fleet.fraction_to_ore2 = p
+        
+        # 2. Set the requested Outflow for the Mill 
+        plant.true_ore1_stock.set_target_outflow(r * (1.0 - p))
+        plant.true_ore2_stock.set_target_outflow(c.mode_a_ore2_milling_rate)
 
         sensors.belief_ore1_stock.rate = 0.0
         sensors.belief_ore2_stock.rate = r * p - c.mode_a_ore2_milling_rate
@@ -266,11 +268,12 @@ class ModeB(OperatingMode):
             plant.true_total_ore_milled.rate = r
         mine.true_ore_extracted_from_current_parcel.rate = r
         plant.true_ore_stock.rate = sensors.belief_ore_stock.rate = 0.0
-        flow1, flow2 = fleet.route_flows(p)
-        plant.true_ore1_stock.apply_inflow(flow1)
-        plant.true_ore2_stock.apply_inflow(flow2)
-        plant.true_ore1_stock.take_outflow(c.mode_b_ore1_milling_rate)
-        plant.true_ore2_stock.take_outflow(c.mode_b_ore2_milling_rate)
+        # 1. Set the Fleet Routing Policy
+        fleet.fraction_to_ore2 = p
+        
+        # 2. Set the requested Outflow for the Mill 
+        plant.true_ore1_stock.set_target_outflow(c.mode_b_ore1_milling_rate)
+        plant.true_ore2_stock.set_target_outflow(c.mode_b_ore2_milling_rate)
 
         sensors.belief_ore1_stock.rate = r * (1.0 - p) - c.mode_b_ore1_milling_rate
         sensors.belief_ore2_stock.rate = r * p - c.mode_b_ore2_milling_rate
@@ -333,11 +336,12 @@ class ModeBContingency(OperatingMode):
             plant.true_total_ore_milled.rate = r
         mine.true_ore_extracted_from_current_parcel.rate = r
         plant.true_ore_stock.rate = sensors.belief_ore_stock.rate = 0.0
-        flow1, flow2 = fleet.route_flows(p)
-        plant.true_ore1_stock.apply_inflow(flow1)
-        plant.true_ore2_stock.apply_inflow(flow2)
-        plant.true_ore1_stock.take_outflow(0.0)
-        plant.true_ore2_stock.take_outflow(r)
+        # 1. Set the Fleet Routing Policy
+        fleet.fraction_to_ore2 = p
+        
+        # 2. Set the requested Outflow for the Mill 
+        plant.true_ore1_stock.set_target_outflow(0.0)
+        plant.true_ore2_stock.set_target_outflow(r)
 
         sensors.belief_ore1_stock.rate = r * (1.0 - p)
         sensors.belief_ore2_stock.rate = r * p - r
@@ -377,13 +381,12 @@ class ModeBMineSurging(OperatingMode):
         if controller.is_campaign_complete():
             return RequireDecision()
 
-        # NOTE: Cross-stockout physical preemption added here.
-        # If Ore 1 runs out while surging, the plant drops into ModeBContingency.
-        if sensors.belief_ore1_stock.value <= plant.config.stockout_epsilon:
-            controller.reset_contingency_timer()
-            return ModeBContingency()
+        # Cross-stockout physical preemption logic has been removed to match Arena behavior.
 
-        if sensors.belief_ore_stock.value <= plant.config.target_ore_stock_level:
+        # THE ORIGINAL ARENA FIX: 
+        # Only evaluate the target floor constraint if the stockpile is actively draining (Rate < 0).
+        # During mid-campaign surging, rate > 0, so this safely evaluates to False and prevents the deadlock.
+        if sensors.belief_ore_stock.rate < 0 and sensors.belief_ore_stock.value <= plant.config.target_ore_stock_level:
             return RequireDecision()
 
         return None
@@ -409,11 +412,12 @@ class ModeBMineSurging(OperatingMode):
         plant.true_ore_stock.rate = sensors.belief_ore_stock.rate = (
             r - c.mode_b_ore1_milling_rate - c.mode_b_ore2_milling_rate
         )
-        flow1, flow2 = fleet.route_flows(p)
-        plant.true_ore1_stock.apply_inflow(flow1)
-        plant.true_ore2_stock.apply_inflow(flow2)
-        plant.true_ore1_stock.take_outflow(c.mode_b_ore1_milling_rate)
-        plant.true_ore2_stock.take_outflow(flow2.mass_rate)
+        # 1. Set the Fleet Routing Policy
+        fleet.fraction_to_ore2 = p
+        
+        # 2. Set the requested Outflow for the Mill 
+        plant.true_ore1_stock.set_target_outflow(c.mode_b_ore1_milling_rate)
+        plant.true_ore2_stock.set_target_outflow(r * p)
 
         sensors.belief_ore1_stock.rate = r * (1.0 - p) - c.mode_b_ore1_milling_rate
         sensors.belief_ore2_stock.rate = 0.0
@@ -453,10 +457,20 @@ class Shutdown(OperatingMode):
     def apply_dynamics(self, model: drs.Module):
         controller = model.controller
         controller.time_shutdown.rate = 1.0
+        
+        # Explicitly halt physical extraction and milling rates
+        model.mine.true_ore_extraction.rate = 0.0
+        model.mine.true_ore_extracted_from_current_parcel.rate = 0.0
+        model.plant.true_ore1_stock.set_target_outflow(0.0)
+        model.plant.true_ore2_stock.set_target_outflow(0.0)
+        model.sensors.belief_ore1_stock.rate = 0.0
+        model.sensors.belief_ore2_stock.rate = 0.0
+        
         if hasattr(model.plant, "total_cyanide_consumed"):
             model.plant.true_total_cyanide_consumed.rate = 0.0
         if hasattr(model.plant, "total_ore_milled"):
             model.plant.true_total_ore_milled.rate = 0.0
+            
         controller.time_executed_campaign_shutdown.rate = 1.0
         controller.time_executed_campaign_shutdown.upper_threshold = (
             controller.config.duration_of_shutdowns
@@ -512,11 +526,12 @@ class ModeC(OperatingMode):
             plant.true_total_ore_milled.rate = r
         mine.true_ore_extracted_from_current_parcel.rate = r
         plant.true_ore_stock.rate = sensors.belief_ore_stock.rate = 0.0
-        flow1, flow2 = fleet.route_flows(p)
-        plant.true_ore1_stock.apply_inflow(flow1)
-        plant.true_ore2_stock.apply_inflow(flow2)
-        plant.true_ore1_stock.take_outflow(c.mode_c_ore1_milling_rate)
-        plant.true_ore2_stock.take_outflow(c.mode_c_ore2_milling_rate)
+        # 1. Set the Fleet Routing Policy
+        fleet.fraction_to_ore2 = p
+        
+        # 2. Set the requested Outflow for the Mill 
+        plant.true_ore1_stock.set_target_outflow(c.mode_c_ore1_milling_rate)
+        plant.true_ore2_stock.set_target_outflow(c.mode_c_ore2_milling_rate)
 
         sensors.belief_ore1_stock.rate = r * (1.0 - p) - c.mode_c_ore1_milling_rate
         sensors.belief_ore2_stock.rate = r * p - c.mode_c_ore2_milling_rate
@@ -579,11 +594,12 @@ class ModeCContingency(OperatingMode):
             plant.true_total_ore_milled.rate = r
         mine.true_ore_extracted_from_current_parcel.rate = r
         plant.true_ore_stock.rate = sensors.belief_ore_stock.rate = 0.0
-        flow1, flow2 = fleet.route_flows(p)
-        plant.true_ore1_stock.apply_inflow(flow1)
-        plant.true_ore2_stock.apply_inflow(flow2)
-        plant.true_ore1_stock.take_outflow(r)
-        plant.true_ore2_stock.take_outflow(0.0)
+        # 1. Set the Fleet Routing Policy
+        fleet.fraction_to_ore2 = p
+        
+        # 2. Set the requested Outflow for the Mill 
+        plant.true_ore1_stock.set_target_outflow(r)
+        plant.true_ore2_stock.set_target_outflow(0.0)
 
         sensors.belief_ore1_stock.rate = r * (1.0 - p) - r
         sensors.belief_ore2_stock.rate = r * p
@@ -627,7 +643,10 @@ class ModeCMineSurging(OperatingMode):
             controller.reset_contingency_timer()
             return ModeCContingency()
 
-        if sensors.belief_ore_stock.value <= plant.config.target_ore_stock_level:
+        # THE ORIGINAL ARENA FIX: 
+        # Only evaluate the target floor constraint if the stockpile is actively draining (Rate < 0).
+        # During mid-campaign surging, rate > 0, so this safely evaluates to False and prevents the deadlock.
+        if sensors.belief_ore_stock.rate < 0 and sensors.belief_ore_stock.value <= plant.config.target_ore_stock_level:
             return RequireDecision()
 
         return None
@@ -653,11 +672,12 @@ class ModeCMineSurging(OperatingMode):
         plant.true_ore_stock.rate = sensors.belief_ore_stock.rate = (
             r - c.mode_c_ore1_milling_rate - c.mode_c_ore2_milling_rate
         )
-        flow1, flow2 = fleet.route_flows(p)
-        plant.true_ore1_stock.apply_inflow(flow1)
-        plant.true_ore2_stock.apply_inflow(flow2)
-        plant.true_ore1_stock.take_outflow(flow1.mass_rate)
-        plant.true_ore2_stock.take_outflow(c.mode_c_ore2_milling_rate)
+        # 1. Set the Fleet Routing Policy
+        fleet.fraction_to_ore2 = p
+        
+        # 2. Set the requested Outflow for the Mill 
+        plant.true_ore1_stock.set_target_outflow(r * (1.0 - p))
+        plant.true_ore2_stock.set_target_outflow(c.mode_c_ore2_milling_rate)
 
         sensors.belief_ore1_stock.rate = 0.0
         sensors.belief_ore2_stock.rate = r * p - c.mode_c_ore2_milling_rate
@@ -722,11 +742,12 @@ class ModeD(OperatingMode):
             plant.true_total_ore_milled.rate = r
         mine.true_ore_extracted_from_current_parcel.rate = r
         plant.true_ore_stock.rate = sensors.belief_ore_stock.rate = 0.0
-        flow1, flow2 = fleet.route_flows(p)
-        plant.true_ore1_stock.apply_inflow(flow1)
-        plant.true_ore2_stock.apply_inflow(flow2)
-        plant.true_ore1_stock.take_outflow(c.mode_d_ore1_milling_rate)
-        plant.true_ore2_stock.take_outflow(c.mode_d_ore2_milling_rate)
+        # 1. Set the Fleet Routing Policy
+        fleet.fraction_to_ore2 = p
+        
+        # 2. Set the requested Outflow for the Mill 
+        plant.true_ore1_stock.set_target_outflow(c.mode_d_ore1_milling_rate)
+        plant.true_ore2_stock.set_target_outflow(c.mode_d_ore2_milling_rate)
 
         sensors.belief_ore1_stock.rate = r * (1.0 - p) - c.mode_d_ore1_milling_rate
         sensors.belief_ore2_stock.rate = r * p - c.mode_d_ore2_milling_rate
@@ -789,11 +810,12 @@ class ModeDContingency(OperatingMode):
             plant.true_total_ore_milled.rate = r
         mine.true_ore_extracted_from_current_parcel.rate = r
         plant.true_ore_stock.rate = sensors.belief_ore_stock.rate = 0.0
-        flow1, flow2 = fleet.route_flows(p)
-        plant.true_ore1_stock.apply_inflow(flow1)
-        plant.true_ore2_stock.apply_inflow(flow2)
-        plant.true_ore1_stock.take_outflow(0.0)
-        plant.true_ore2_stock.take_outflow(r)
+        # 1. Set the Fleet Routing Policy
+        fleet.fraction_to_ore2 = p
+        
+        # 2. Set the requested Outflow for the Mill 
+        plant.true_ore1_stock.set_target_outflow(0.0)
+        plant.true_ore2_stock.set_target_outflow(r)
 
         sensors.belief_ore1_stock.rate = r * (1.0 - p)
         sensors.belief_ore2_stock.rate = r * p - r
@@ -837,7 +859,10 @@ class ModeDMineSurging(OperatingMode):
             controller.reset_contingency_timer()
             return ModeDContingency()
 
-        if sensors.belief_ore_stock.value <= plant.config.target_ore_stock_level:
+        # THE ORIGINAL ARENA FIX: 
+        # Only evaluate the target floor constraint if the stockpile is actively draining (Rate < 0).
+        # During mid-campaign surging, rate > 0, so this safely evaluates to False and prevents the deadlock.
+        if sensors.belief_ore_stock.rate < 0 and sensors.belief_ore_stock.value <= plant.config.target_ore_stock_level:
             return RequireDecision()
 
         return None
@@ -863,11 +888,12 @@ class ModeDMineSurging(OperatingMode):
         plant.true_ore_stock.rate = sensors.belief_ore_stock.rate = (
             r - c.mode_d_ore1_milling_rate - c.mode_d_ore2_milling_rate
         )
-        flow1, flow2 = fleet.route_flows(p)
-        plant.true_ore1_stock.apply_inflow(flow1)
-        plant.true_ore2_stock.apply_inflow(flow2)
-        plant.true_ore1_stock.take_outflow(c.mode_d_ore1_milling_rate)
-        plant.true_ore2_stock.take_outflow(flow2.mass_rate)
+        # 1. Set the Fleet Routing Policy
+        fleet.fraction_to_ore2 = p
+        
+        # 2. Set the requested Outflow for the Mill 
+        plant.true_ore1_stock.set_target_outflow(c.mode_d_ore1_milling_rate)
+        plant.true_ore2_stock.set_target_outflow(r * p)
 
         sensors.belief_ore1_stock.rate = r * (1.0 - p) - c.mode_d_ore1_milling_rate
         sensors.belief_ore2_stock.rate = 0.0

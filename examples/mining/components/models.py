@@ -1,4 +1,5 @@
 from drs.module import drs
+from drs.network import Network, Edge
 from drs.telemetry import Telemetry
 
 from .config import BaseDualStockpileConfig, ConcentratorConfig, CyanidationConfig
@@ -88,13 +89,47 @@ class BaseBlendingModel(drs.Module):
                     lambda t, m, s, h: m.sensors.belief_ore2_cyanide.value,
                 )
 
+    def build_network(self, expected_attributes: list):
+        """Wires physical Nodes together with Edges."""
+        self.supply_network = Network()
+        
+        self.supply_network.add_node(self.fleet)
+        self.supply_network.add_node(self.plant.true_ore1_stock)
+        self.supply_network.add_node(self.plant.true_ore2_stock)
+        
+        # Define Edges (Mine has no source Node; we inject manually. Mill has no target Node)
+        attr_list = ["mass"] + expected_attributes
+        self.edge_mine_to_fleet = Edge("Mine_To_Fleet", source=None, target=self.fleet, attributes=attr_list)
+        self.edge_fleet_to_ore1 = Edge("Fleet_To_Ore1", source=self.fleet, target=self.plant.true_ore1_stock, attributes=attr_list)
+        self.edge_fleet_to_ore2 = Edge("Fleet_To_Ore2", source=self.fleet, target=self.plant.true_ore2_stock, attributes=attr_list)
+        self.edge_ore1_to_mill = Edge("Ore1_To_Mill", source=self.plant.true_ore1_stock, target=None, attributes=attr_list)
+        self.edge_ore2_to_mill = Edge("Ore2_To_Mill", source=self.plant.true_ore2_stock, target=None, attributes=attr_list)
+        
+        # Register and sort Graph
+        self.supply_network.add_edge(self.edge_mine_to_fleet)
+        self.supply_network.add_edge(self.edge_fleet_to_ore1)
+        self.supply_network.add_edge(self.edge_fleet_to_ore2)
+        self.supply_network.add_edge(self.edge_ore1_to_mill)
+        self.supply_network.add_edge(self.edge_ore2_to_mill)
+        self.supply_network.compile()
+
     def update_rates(self):
         self.global_time.rate = 1.0
-        self.controller.update_rates()
-        self.mine.update_rates()
-        self.fleet.update_rates()
-        self.plant.update_rates()
+        
+        # Ensure sensors update their beliefs based on the physical state FIRST
+        # so the controller operates on the latest logical information
         self.sensors.update_rates()
+        self.controller.update_rates()
+        
+        # 1. Inject Mine Extraction directly into the Network Edge
+        flow = self.mine.outgoing_flow
+        self.edge_mine_to_fleet.set_rates({"mass": flow.mass_rate, **flow.attributes})
+        
+        # 2. Network orchestrates topological sort, calculates splitting, and applies accumulation
+        self.supply_network.update_rates()
+        
+        self.mine.update_rates()
+        self.plant.update_rates()
 
     def is_terminating_condition_met(self) -> bool:
         # Terminate when the mine has extracted all its ore reserves
@@ -109,12 +144,7 @@ class BaseBlendingModel(drs.Module):
         self.sensors.check_transitions(trigger_var, is_upper)
         self.controller.check_transitions(trigger_var, is_upper)
 
-    def is_terminating_condition_met(self) -> bool:
-        c = self.config
-        extraction_met = self.mine.true_ore_extraction.value >= c.total_ore_to_extract
-        stock_met = abs(self.sensors.belief_ore_stock.value - c.target_ore_stock_level) < 0.001
 
-        return extraction_met and stock_met
 
     def print_statistics(self):
         print("\n--- Output Statistics ---")
@@ -182,6 +212,7 @@ class ConcentratorModel(BaseBlendingModel):
         self.sensors = ConcentratorSensorNetwork(self.config, self.mine, self.fleet, self.plant)
         self.controller = ConcentratorController(self.config, self.sensors, self.mine, self.fleet, self.plant)
 
+        self.build_network(expected_attributes=["grade"])
         self.setup_telemetry()
 
 
@@ -201,4 +232,5 @@ class CyanidationModel(BaseBlendingModel):
         self.sensors = CyanidationSensorNetwork(self.config, self.mine, self.fleet, self.plant)
         self.controller = CyanidationController(self.config, self.sensors, self.mine, self.fleet, self.plant)
 
+        self.build_network(expected_attributes=["cyanide"])
         self.setup_telemetry()

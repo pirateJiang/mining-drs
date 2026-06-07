@@ -77,3 +77,6 @@ Mode B Contingency (Process as much Ore 2 as possible):
 ---
 QUESTIONS: 
 should we try to always have 60/40 Ratio in our stockpiles? 
+
+
+HOW WOULD RUOUSSOS DO THIS? HE HAD HIS FLEET MANAGEMENT OPTIMIZATION PAPER.

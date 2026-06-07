@@ -20,8 +20,12 @@ class DRSEngine:
 
         # Initialize state via standard OO contract
         self.model.initialize_state()
+        
+        # Record initial state before any time steps occur
+        self.model._run_post_step_hooks(self.current_time)
 
         last_trigger_var = None
+        consecutive_zero_dt_count = 0
 
         while True:
             # Check standard OO contract terminating condition
@@ -42,18 +46,21 @@ class DRSEngine:
 
             # --- Deadlock Fail-Fast Detection ---
             if dt == 0.0:
-                if trigger_var is not None and trigger_var == last_trigger_var:
+                consecutive_zero_dt_count += 1
+                if consecutive_zero_dt_count > 20:
                     state_dump = "\\n--- Engine State at Deadlock ---\\n"
                     for v in current_variables:
                         state_dump += f"{v.name}: value={v.value}, rate={v.rate}, bounds=[{v.lower_threshold}, {v.upper_threshold}]\\n"
                     
                     raise RuntimeError(
-                        f"DeadlockError: Variable '{trigger_var.name}' is stuck at its threshold "
-                        f"(value={trigger_var.value}, rate={trigger_var.rate}). The model's check_transitions() "
-                        f"failed to resolve the event, causing an infinite dt=0 loop.\\n{state_dump}"
+                        f"DeadlockError: Maximum consecutive zero-time steps (20) reached. "
+                        f"The simulation is ping-ponging between states without advancing time. "
+                        f"Last trigger: '{trigger_var.name if trigger_var else 'None'}' "
+                        f"(value={trigger_var.value if trigger_var else 'None'}, rate={trigger_var.rate if trigger_var else 'None'}).\\n{state_dump}"
                     )
                 last_trigger_var = trigger_var
             else:
+                consecutive_zero_dt_count = 0
                 last_trigger_var = None
 
             # Prevent infinite loops

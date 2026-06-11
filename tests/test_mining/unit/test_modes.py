@@ -1,6 +1,7 @@
 import pytest
-from drs.modes import OperatingMode, RequireDecision
+from examples.mining.components.modes import OperatingMode, RequireDecision
 from drs.module import drs
+from examples.mining.components.data import TargetRates
 from typing import Union, Optional
 
 class MockMode(OperatingMode):
@@ -22,8 +23,8 @@ class MockMode(OperatingMode):
     def check_end_conditions(self, model: drs.Module) -> Union[Optional["OperatingMode"], RequireDecision]:
         return None
 
-    def apply_dynamics(self, model: drs.Module):
-        pass
+    def get_target_rates(self, model: drs.Module) -> TargetRates:
+        return TargetRates(0, 0, 0)
 
 def test_operating_mode_equality():
     mode1 = MockMode(1, "Mode 1")

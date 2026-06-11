@@ -1,3 +1,9 @@
+The route policy in our visualization doesnt seem true to our current system at the moment. At the moment the trucks do or at least should know what the parcel is and use that to always route ore 1 to stockpile 1 and ore 2 to stockpile 2. 
+Then the way i think about it the controller looks at the stockpiles and decides which stockpiles to pull from and how much. 
+Also sensor logic the inputs vs outputs could maybe be more clear? like i feel like the true ones are all inputs and the outputs are all the belief ones. And maybe theres a way to show that mapping. 
+The concept of grade could also be improved as that word kind of means something else. 
+also the controller tooltip is so hard to read 
+
 1. Get dynamic mass balance working with multiple muck sites to a single concentrator/crusher
 2. Consider different feed rates from muck sites to our stockpiles (which go to our concentrators)
 3. maximize the daily tonnage time average (maximize daily throughput)

@@ -1,9 +1,10 @@
+import math
 from dataclasses import dataclass
-from drs.config import CoreDRSConfig
 
 
 @dataclass
-class BaseDualStockpileConfig(CoreDRSConfig):
+class BaseDualStockpileConfig:
+    replication_length: float = math.inf
     """
     Shared configuration for dual-stockpile surging mine operations.
     Contains mass-balance and scheduling parameters common to all models.

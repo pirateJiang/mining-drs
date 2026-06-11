@@ -35,7 +35,7 @@ def test_telemetry_snapshot():
     # Take a snapshot at t=2.0
     telemetry.snapshot(current_time=2.0)
 
-    history = telemetry.get_raw_history()
+    history = telemetry.history
 
     assert len(history) == 2
 

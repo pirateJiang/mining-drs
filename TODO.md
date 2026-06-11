@@ -15,3 +15,5 @@ LOOK AT CITATIONS 7 and 10 WHICH USE ML ON DRS of APE1455294.pdf
 Need to make Kriging stuff (or find online or in a library), SGS and GSGS stuff (or find in a library), and SIS stuff 
 
 LOOK AT CITATION 11 TO GET ADD NPV AND IRR TO MY EXISTING MODELS AND PLOTS APE1455294.pdf
+
+Make it possible to from code make a set of equations and variable valuables. 

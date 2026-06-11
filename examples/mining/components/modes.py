@@ -1,6 +1,53 @@
-from drs.modes import OperatingMode, RequireDecision
+from abc import ABC, abstractmethod
+from typing import Optional, Union
 from drs.module import drs
+from .data import TargetRates
 
+class RequireDecision(Exception):
+    """A signal flag and engine interrupt for when the simulation requires external control."""
+
+    pass
+
+
+class OperatingMode(ABC):
+    def __eq__(self, other):
+        if not isinstance(other, OperatingMode):
+            return False
+        return self.id == other.id
+
+    def __hash__(self):
+        return hash(self.id)
+
+    @property
+    @abstractmethod
+    def id(self) -> int:
+        """The discrete integer action for the Gym environment."""
+        pass
+
+    @property
+    @abstractmethod
+    def name(self) -> str:
+        """String representation for plotting/telemetry."""
+        pass
+
+    @abstractmethod
+    def is_valid_start(self, model: drs.Module) -> bool:
+        """Do the conditions of our system allow for this mode to be entered?
+        Useful for Action Masking: Can the RL agent choose this mode right now?
+        """
+        pass
+
+    @abstractmethod
+    def check_end_conditions(
+        self, model: drs.Module
+    ) -> Union[Optional["OperatingMode"], RequireDecision]:
+        """Preemption: Does the current state force a transition to a different mode? Does it require a decision from a controller as to our next mode?"""
+        pass
+
+    @abstractmethod
+    def get_target_rates(self, model: drs.Module) -> TargetRates:
+        """Physics: Returns the target rates (TargetRates dataclass) for this specific mode."""
+        pass
 
 class ModeA(OperatingMode):
     @property
@@ -24,54 +71,25 @@ class ModeA(OperatingMode):
         if controller.is_campaign_complete():
             return RequireDecision()
 
-        # 2. Physical Preemption: Ore 1 is empty, must surge
         if sensors.belief_ore1_stock.value <= plant.config.stockout_epsilon:
             return ModeAMineSurging()
 
-        # 3. Logic Preemption: Ore 2 dropped to 0, trigger contingency
         if sensors.belief_ore2_stock.value <= plant.config.stockout_epsilon:
             controller.reset_contingency_timer()
             return ModeAContingency()
 
         return None
 
-    def apply_dynamics(self, model: drs.Module):
-        plant = model.plant
-        controller = model.controller
-        c = plant.config
-        mine = model.mine
-        fleet = model.fleet
-        sensors = model.sensors
-
-        p = model.sensors.belief_routing_fraction
-        r = c.mode_a_ore1_milling_rate + c.mode_a_ore2_milling_rate
-
-        # --- Plant Rates ---
-        mine.true_ore_extraction.rate = r
-        if hasattr(plant, "true_total_cyanide_consumed"):
-            plant.true_total_cyanide_consumed.rate = r * getattr(c, "mode_a_avg_cyanide", 0.0)
-        if hasattr(plant, "true_total_ore_milled"):
-            plant.true_total_ore_milled.rate = r
-        mine.true_ore_extracted_from_current_parcel.rate = r
-        plant.true_ore_stock.rate = sensors.belief_ore_stock.rate = 0.0
-        # 1. Set the Fleet Routing Policy
-        fleet.fraction_to_ore2 = p
+    def get_target_rates(self, model: drs.Module) -> TargetRates:
+        c = model.plant.config
+        milling_1 = c.mode_a_ore1_milling_rate
+        milling_2 = c.mode_a_ore2_milling_rate
         
-        # 2. Set the requested Outflow for the Mill 
-        plant.true_ore1_stock.set_target_outflow(c.mode_a_ore1_milling_rate)
-        plant.true_ore2_stock.set_target_outflow(c.mode_a_ore2_milling_rate)
-
-        sensors.belief_ore1_stock.rate = r * (1.0 - p) - c.mode_a_ore1_milling_rate
-        sensors.belief_ore2_stock.rate = r * p - c.mode_a_ore2_milling_rate
-
-        plant.true_ore1_stock.mass.lower_threshold = sensors.belief_ore1_stock.lower_threshold = 0.0
-        plant.true_ore2_stock.mass.lower_threshold = sensors.belief_ore2_stock.lower_threshold = 0.0
-
-
-        controller.time_mode_a.rate = 1.0
-        controller.time_executed_campaign_shutdown.rate = 1.0
-        controller.time_executed_campaign_shutdown.upper_threshold = (
-            controller.config.duration_of_production_campaigns
+        # Fleet provides exactly what gets used
+        return TargetRates(
+            extraction_rate=(milling_1 + milling_2), 
+            ore1_milling_rate=milling_1, 
+            ore2_milling_rate=milling_2
         )
 
 
@@ -85,7 +103,6 @@ class ModeAContingency(OperatingMode):
         return "MODE_A_CONTINGENCY"
 
     def is_valid_start(self, model: drs.Module) -> bool:
-        sensors = model.sensors
         return True
 
     def check_end_conditions(self, model: drs.Module):
@@ -104,45 +121,15 @@ class ModeAContingency(OperatingMode):
 
         return None
 
-    def apply_dynamics(self, model: drs.Module):
-        plant = model.plant
-        controller = model.controller
-        c = plant.config
-        mine = model.mine
-        fleet = model.fleet
-        sensors = model.sensors
-
-        p = model.sensors.belief_routing_fraction
+    def get_target_rates(self, model: drs.Module) -> TargetRates:
+        c = model.plant.config
         r = c.mode_a_contingency_ore1_milling_rate
-
-        mine.true_ore_extraction.rate = r
-        if hasattr(plant, "true_total_cyanide_consumed"):
-            plant.true_total_cyanide_consumed.rate = r * getattr(c, "mode_a_contingency_avg_cyanide", 0.0)
-        if hasattr(plant, "true_total_ore_milled"):
-            plant.true_total_ore_milled.rate = r
-        mine.true_ore_extracted_from_current_parcel.rate = r
-        plant.true_ore_stock.rate = sensors.belief_ore_stock.rate = 0.0
-        # 1. Set the Fleet Routing Policy
-        fleet.fraction_to_ore2 = p
         
-        # 2. Set the requested Outflow for the Mill 
-        plant.true_ore1_stock.set_target_outflow(r)
-        plant.true_ore2_stock.set_target_outflow(0.0)
-
-        sensors.belief_ore1_stock.rate = r * (1.0 - p) - r
-        sensors.belief_ore2_stock.rate = r * p
-
-        plant.true_ore1_stock.mass.lower_threshold = sensors.belief_ore1_stock.lower_threshold = 0.0
-
-
-        controller.time_mode_a_contingency.rate = 1.0
-        controller.time_executed_campaign_shutdown.rate = 1.0
-        controller.time_executed_contingency.rate = 1.0
-        controller.time_executed_campaign_shutdown.upper_threshold = (
-            controller.config.duration_of_production_campaigns
-        )
-        controller.time_executed_contingency.upper_threshold = (
-            controller.config.duration_of_contingency_segments
+        # Fleet slows down to exactly match the throttled plant
+        return TargetRates(
+            extraction_rate=r, 
+            ore1_milling_rate=r, 
+            ore2_milling_rate=0.0
         )
 
 
@@ -156,7 +143,6 @@ class ModeAMineSurging(OperatingMode):
         return "MODE_A_MINE_SURGING"
 
     def is_valid_start(self, model: drs.Module) -> bool:
-        sensors = model.sensors
         return True
 
     def check_end_conditions(self, model: drs.Module):
@@ -167,55 +153,28 @@ class ModeAMineSurging(OperatingMode):
         if controller.is_campaign_complete():
             return RequireDecision()
 
-        # Cross-stockout physical preemption logic has been removed to match Arena behavior.
+        # Set threshold to tell engine exactly when to stop time!
+        sensors.belief_ore_stock.lower_threshold = plant.config.target_ore_stock_level
 
-        # THE ORIGINAL ARENA FIX: 
-        # Only evaluate the target floor constraint if the stockpile is actively draining (Rate < 0).
-        # During mid-campaign surging, rate > 0, so this safely evaluates to False and prevents the deadlock.
-        if sensors.belief_ore_stock.rate < 0 and sensors.belief_ore_stock.value <= plant.config.target_ore_stock_level:
+        # End Surging only when the excess inventory is successfully burned off
+        if sensors.belief_ore_stock.value <= plant.config.target_ore_stock_level + 1e-6:
             return RequireDecision()
 
         return None
 
-    def apply_dynamics(self, model: drs.Module):
-        plant = model.plant
-        controller = model.controller
-        c = plant.config
-        mine = model.mine
-        fleet = model.fleet
-        sensors = model.sensors
-
-        p = model.sensors.belief_routing_fraction
-        r = c.mode_a_ore1_milling_rate * 1.0 / (1.0 - p)
-
-        mine.true_ore_extraction.rate = r
-        r_mill = c.mode_a_ore1_milling_rate + c.mode_a_ore2_milling_rate
-        if hasattr(plant, "true_total_cyanide_consumed"):
-            plant.true_total_cyanide_consumed.rate = r_mill * getattr(c, "mode_a_avg_cyanide", 0.0)
-        if hasattr(plant, "true_total_ore_milled"):
-            plant.true_total_ore_milled.rate = r_mill
-        mine.true_ore_extracted_from_current_parcel.rate = r
-        plant.true_ore_stock.rate = sensors.belief_ore_stock.rate = (
-            r - c.mode_a_ore1_milling_rate - c.mode_a_ore2_milling_rate
-        )
-        # 1. Set the Fleet Routing Policy
-        fleet.fraction_to_ore2 = p
+    def get_target_rates(self, model: drs.Module) -> TargetRates:
+        c = model.plant.config
+        milling_1 = c.mode_a_ore1_milling_rate
+        milling_2 = c.mode_a_ore2_milling_rate
         
-        # 2. Set the requested Outflow for the Mill 
-        plant.true_ore1_stock.set_target_outflow(r * (1.0 - p))
-        plant.true_ore2_stock.set_target_outflow(c.mode_a_ore2_milling_rate)
-
-        sensors.belief_ore1_stock.rate = 0.0
-        sensors.belief_ore2_stock.rate = r * p - c.mode_a_ore2_milling_rate
-
-        plant.true_ore_stock.lower_threshold = sensors.belief_ore_stock.lower_threshold = c.target_ore_stock_level
-        plant.true_ore2_stock.mass.lower_threshold = sensors.belief_ore2_stock.lower_threshold = 0.0
-
-
-        controller.time_mode_a_surging.rate = 1.0
-        controller.time_executed_campaign_shutdown.rate = 1.0
-        controller.time_executed_campaign_shutdown.upper_threshold = (
-            controller.config.duration_of_production_campaigns
+        p = model.sensors.belief_routing_fraction
+        # Mine extracts EXACTLY enough total rock to yield the required Ore 1
+        extraction = (milling_1 / (1.0 - p)) if (1.0 - p) > 0 else 0.0
+        
+        return TargetRates(
+            extraction_rate=extraction,
+            ore1_milling_rate=milling_1,
+            ore2_milling_rate=milling_2,
         )
 
 
@@ -250,42 +209,16 @@ class ModeB(OperatingMode):
 
         return None
 
-    def apply_dynamics(self, model: drs.Module):
-        plant = model.plant
-        controller = model.controller
-        c = plant.config
-        mine = model.mine
-        fleet = model.fleet
-        sensors = model.sensors
-
-        p = model.sensors.belief_routing_fraction
-        r = c.mode_b_ore1_milling_rate + c.mode_b_ore2_milling_rate
-
-        mine.true_ore_extraction.rate = r
-        if hasattr(plant, "true_total_cyanide_consumed"):
-            plant.true_total_cyanide_consumed.rate = r * getattr(c, "mode_b_avg_cyanide", 0.0)
-        if hasattr(plant, "true_total_ore_milled"):
-            plant.true_total_ore_milled.rate = r
-        mine.true_ore_extracted_from_current_parcel.rate = r
-        plant.true_ore_stock.rate = sensors.belief_ore_stock.rate = 0.0
-        # 1. Set the Fleet Routing Policy
-        fleet.fraction_to_ore2 = p
+    def get_target_rates(self, model: drs.Module) -> TargetRates:
+        c = model.plant.config
+        milling_1 = c.mode_b_ore1_milling_rate
+        milling_2 = c.mode_b_ore2_milling_rate
         
-        # 2. Set the requested Outflow for the Mill 
-        plant.true_ore1_stock.set_target_outflow(c.mode_b_ore1_milling_rate)
-        plant.true_ore2_stock.set_target_outflow(c.mode_b_ore2_milling_rate)
-
-        sensors.belief_ore1_stock.rate = r * (1.0 - p) - c.mode_b_ore1_milling_rate
-        sensors.belief_ore2_stock.rate = r * p - c.mode_b_ore2_milling_rate
-
-        plant.true_ore1_stock.mass.lower_threshold = sensors.belief_ore1_stock.lower_threshold = 0.0
-        plant.true_ore2_stock.mass.lower_threshold = sensors.belief_ore2_stock.lower_threshold = 0.0
-
-
-        controller.time_mode_b.rate = 1.0
-        controller.time_executed_campaign_shutdown.rate = 1.0
-        controller.time_executed_campaign_shutdown.upper_threshold = (
-            controller.config.duration_of_production_campaigns
+        # Fleet provides exactly what gets used
+        return TargetRates(
+            extraction_rate=(milling_1 + milling_2), 
+            ore1_milling_rate=milling_1, 
+            ore2_milling_rate=milling_2
         )
 
 
@@ -299,7 +232,6 @@ class ModeBContingency(OperatingMode):
         return "MODE_B_CONTINGENCY"
 
     def is_valid_start(self, model: drs.Module) -> bool:
-        sensors = model.sensors
         return True
 
     def check_end_conditions(self, model: drs.Module):
@@ -318,45 +250,15 @@ class ModeBContingency(OperatingMode):
 
         return None
 
-    def apply_dynamics(self, model: drs.Module):
-        plant = model.plant
-        controller = model.controller
-        c = plant.config
-        mine = model.mine
-        fleet = model.fleet
-        sensors = model.sensors
-
-        p = model.sensors.belief_routing_fraction
+    def get_target_rates(self, model: drs.Module) -> TargetRates:
+        c = model.plant.config
         r = c.mode_b_contingency_ore2_milling_rate
-
-        mine.true_ore_extraction.rate = r
-        if hasattr(plant, "true_total_cyanide_consumed"):
-            plant.true_total_cyanide_consumed.rate = r * getattr(c, "mode_b_contingency_avg_cyanide", 0.0)
-        if hasattr(plant, "true_total_ore_milled"):
-            plant.true_total_ore_milled.rate = r
-        mine.true_ore_extracted_from_current_parcel.rate = r
-        plant.true_ore_stock.rate = sensors.belief_ore_stock.rate = 0.0
-        # 1. Set the Fleet Routing Policy
-        fleet.fraction_to_ore2 = p
         
-        # 2. Set the requested Outflow for the Mill 
-        plant.true_ore1_stock.set_target_outflow(0.0)
-        plant.true_ore2_stock.set_target_outflow(r)
-
-        sensors.belief_ore1_stock.rate = r * (1.0 - p)
-        sensors.belief_ore2_stock.rate = r * p - r
-
-        plant.true_ore2_stock.mass.lower_threshold = sensors.belief_ore2_stock.lower_threshold = 0.0
-
-
-        controller.time_mode_b_contingency.rate = 1.0
-        controller.time_executed_campaign_shutdown.rate = 1.0
-        controller.time_executed_contingency.rate = 1.0
-        controller.time_executed_campaign_shutdown.upper_threshold = (
-            controller.config.duration_of_production_campaigns
-        )
-        controller.time_executed_contingency.upper_threshold = (
-            controller.config.duration_of_contingency_segments
+        # Fleet slows down to exactly match the throttled plant
+        return TargetRates(
+            extraction_rate=r, 
+            ore1_milling_rate=0.0, 
+            ore2_milling_rate=r
         )
 
 
@@ -370,7 +272,6 @@ class ModeBMineSurging(OperatingMode):
         return "MODE_B_MINE_SURGING"
 
     def is_valid_start(self, model: drs.Module) -> bool:
-        sensors = model.sensors
         return True
 
     def check_end_conditions(self, model: drs.Module):
@@ -381,55 +282,28 @@ class ModeBMineSurging(OperatingMode):
         if controller.is_campaign_complete():
             return RequireDecision()
 
-        # Cross-stockout physical preemption logic has been removed to match Arena behavior.
+        # Set threshold to tell engine exactly when to stop time!
+        sensors.belief_ore_stock.lower_threshold = plant.config.target_ore_stock_level
 
-        # THE ORIGINAL ARENA FIX: 
-        # Only evaluate the target floor constraint if the stockpile is actively draining (Rate < 0).
-        # During mid-campaign surging, rate > 0, so this safely evaluates to False and prevents the deadlock.
-        if sensors.belief_ore_stock.rate < 0 and sensors.belief_ore_stock.value <= plant.config.target_ore_stock_level:
+        # End Surging only when the excess inventory is successfully burned off
+        if sensors.belief_ore_stock.value <= plant.config.target_ore_stock_level + 1e-6:
             return RequireDecision()
 
         return None
 
-    def apply_dynamics(self, model: drs.Module):
-        plant = model.plant
-        controller = model.controller
-        c = plant.config
-        mine = model.mine
-        fleet = model.fleet
-        sensors = model.sensors
-
-        p = model.sensors.belief_routing_fraction
-        r = c.mode_b_ore2_milling_rate * 1.0 / p
-
-        mine.true_ore_extraction.rate = r
-        r_mill = c.mode_b_ore1_milling_rate + c.mode_b_ore2_milling_rate
-        if hasattr(plant, "true_total_cyanide_consumed"):
-            plant.true_total_cyanide_consumed.rate = r_mill * getattr(c, "mode_b_avg_cyanide", 0.0)
-        if hasattr(plant, "true_total_ore_milled"):
-            plant.true_total_ore_milled.rate = r_mill
-        mine.true_ore_extracted_from_current_parcel.rate = r
-        plant.true_ore_stock.rate = sensors.belief_ore_stock.rate = (
-            r - c.mode_b_ore1_milling_rate - c.mode_b_ore2_milling_rate
-        )
-        # 1. Set the Fleet Routing Policy
-        fleet.fraction_to_ore2 = p
+    def get_target_rates(self, model: drs.Module) -> TargetRates:
+        c = model.plant.config
+        milling_1 = c.mode_b_ore1_milling_rate
+        milling_2 = c.mode_b_ore2_milling_rate
         
-        # 2. Set the requested Outflow for the Mill 
-        plant.true_ore1_stock.set_target_outflow(c.mode_b_ore1_milling_rate)
-        plant.true_ore2_stock.set_target_outflow(r * p)
-
-        sensors.belief_ore1_stock.rate = r * (1.0 - p) - c.mode_b_ore1_milling_rate
-        sensors.belief_ore2_stock.rate = 0.0
-
-        plant.true_ore_stock.lower_threshold = sensors.belief_ore_stock.lower_threshold = c.target_ore_stock_level
-        plant.true_ore1_stock.mass.lower_threshold = sensors.belief_ore1_stock.lower_threshold = 0.0
-
-
-        controller.time_mode_b_surging.rate = 1.0
-        controller.time_executed_campaign_shutdown.rate = 1.0
-        controller.time_executed_campaign_shutdown.upper_threshold = (
-            controller.config.duration_of_production_campaigns
+        p = model.sensors.belief_routing_fraction
+        # Mine extracts EXACTLY enough total rock to yield the required Ore 2
+        extraction = (milling_2 / p) if p > 0 else 0.0
+        
+        return TargetRates(
+            extraction_rate=extraction,
+            ore1_milling_rate=milling_1,
+            ore2_milling_rate=milling_2,
         )
 
 
@@ -443,37 +317,17 @@ class Shutdown(OperatingMode):
         return "SHUTDOWN"
 
     def is_valid_start(self, model: drs.Module) -> bool:
-        sensors = model.sensors
         return True
 
     def check_end_conditions(self, model: drs.Module):
         controller = model.controller
-        sensors = model.sensors
         if controller.is_campaign_complete():
             return RequireDecision()
-
         return None
 
-    def apply_dynamics(self, model: drs.Module):
-        controller = model.controller
-        controller.time_shutdown.rate = 1.0
-        
-        # Explicitly halt physical extraction and milling rates
-        model.mine.true_ore_extraction.rate = 0.0
-        model.mine.true_ore_extracted_from_current_parcel.rate = 0.0
-        model.plant.true_ore1_stock.set_target_outflow(0.0)
-        model.plant.true_ore2_stock.set_target_outflow(0.0)
-        model.sensors.belief_ore1_stock.rate = 0.0
-        model.sensors.belief_ore2_stock.rate = 0.0
-        
-        if hasattr(model.plant, "total_cyanide_consumed"):
-            model.plant.true_total_cyanide_consumed.rate = 0.0
-        if hasattr(model.plant, "total_ore_milled"):
-            model.plant.true_total_ore_milled.rate = 0.0
-            
-        controller.time_executed_campaign_shutdown.rate = 1.0
-        controller.time_executed_campaign_shutdown.upper_threshold = (
-            controller.config.duration_of_shutdowns
+    def get_target_rates(self, model: drs.Module) -> TargetRates:
+        return TargetRates(
+            extraction_rate=0.0, ore1_milling_rate=0.0, ore2_milling_rate=0.0
         )
 
 
@@ -508,42 +362,16 @@ class ModeC(OperatingMode):
 
         return None
 
-    def apply_dynamics(self, model: drs.Module):
-        plant = model.plant
-        controller = model.controller
-        c = plant.config
-        mine = model.mine
-        fleet = model.fleet
-        sensors = model.sensors
-
-        p = model.sensors.belief_routing_fraction
-        r = c.mode_c_ore1_milling_rate + c.mode_c_ore2_milling_rate
-
-        mine.true_ore_extraction.rate = r
-        if hasattr(plant, "true_total_cyanide_consumed"):
-            plant.true_total_cyanide_consumed.rate = r * getattr(c, "mode_c_avg_cyanide", 0.0)
-        if hasattr(plant, "true_total_ore_milled"):
-            plant.true_total_ore_milled.rate = r
-        mine.true_ore_extracted_from_current_parcel.rate = r
-        plant.true_ore_stock.rate = sensors.belief_ore_stock.rate = 0.0
-        # 1. Set the Fleet Routing Policy
-        fleet.fraction_to_ore2 = p
+    def get_target_rates(self, model: drs.Module) -> TargetRates:
+        c = model.plant.config
+        milling_1 = c.mode_c_ore1_milling_rate
+        milling_2 = c.mode_c_ore2_milling_rate
         
-        # 2. Set the requested Outflow for the Mill 
-        plant.true_ore1_stock.set_target_outflow(c.mode_c_ore1_milling_rate)
-        plant.true_ore2_stock.set_target_outflow(c.mode_c_ore2_milling_rate)
-
-        sensors.belief_ore1_stock.rate = r * (1.0 - p) - c.mode_c_ore1_milling_rate
-        sensors.belief_ore2_stock.rate = r * p - c.mode_c_ore2_milling_rate
-
-        plant.true_ore1_stock.mass.lower_threshold = sensors.belief_ore1_stock.lower_threshold = 0.0
-        plant.true_ore2_stock.mass.lower_threshold = sensors.belief_ore2_stock.lower_threshold = 0.0
-
-
-        controller.time_mode_c.rate = 1.0
-        controller.time_executed_campaign_shutdown.rate = 1.0
-        controller.time_executed_campaign_shutdown.upper_threshold = (
-            controller.config.duration_of_production_campaigns
+        # Fleet provides exactly what gets used
+        return TargetRates(
+            extraction_rate=(milling_1 + milling_2), 
+            ore1_milling_rate=milling_1, 
+            ore2_milling_rate=milling_2
         )
 
 
@@ -557,7 +385,6 @@ class ModeCContingency(OperatingMode):
         return "MODE_C_CONTINGENCY"
 
     def is_valid_start(self, model: drs.Module) -> bool:
-        sensors = model.sensors
         return True
 
     def check_end_conditions(self, model: drs.Module):
@@ -576,45 +403,15 @@ class ModeCContingency(OperatingMode):
 
         return None
 
-    def apply_dynamics(self, model: drs.Module):
-        plant = model.plant
-        controller = model.controller
-        c = plant.config
-        mine = model.mine
-        fleet = model.fleet
-        sensors = model.sensors
-
-        p = model.sensors.belief_routing_fraction
+    def get_target_rates(self, model: drs.Module) -> TargetRates:
+        c = model.plant.config
         r = c.mode_c_contingency_ore1_milling_rate
-
-        mine.true_ore_extraction.rate = r
-        if hasattr(plant, "true_total_cyanide_consumed"):
-            plant.true_total_cyanide_consumed.rate = r * getattr(c, "mode_c_contingency_avg_cyanide", 0.0)
-        if hasattr(plant, "true_total_ore_milled"):
-            plant.true_total_ore_milled.rate = r
-        mine.true_ore_extracted_from_current_parcel.rate = r
-        plant.true_ore_stock.rate = sensors.belief_ore_stock.rate = 0.0
-        # 1. Set the Fleet Routing Policy
-        fleet.fraction_to_ore2 = p
         
-        # 2. Set the requested Outflow for the Mill 
-        plant.true_ore1_stock.set_target_outflow(r)
-        plant.true_ore2_stock.set_target_outflow(0.0)
-
-        sensors.belief_ore1_stock.rate = r * (1.0 - p) - r
-        sensors.belief_ore2_stock.rate = r * p
-
-        plant.true_ore1_stock.mass.lower_threshold = sensors.belief_ore1_stock.lower_threshold = 0.0
-
-
-        controller.time_mode_c_contingency.rate = 1.0
-        controller.time_executed_campaign_shutdown.rate = 1.0
-        controller.time_executed_contingency.rate = 1.0
-        controller.time_executed_campaign_shutdown.upper_threshold = (
-            controller.config.duration_of_production_campaigns
-        )
-        controller.time_executed_contingency.upper_threshold = (
-            controller.config.duration_of_contingency_segments
+        # Fleet slows down to exactly match the throttled plant
+        return TargetRates(
+            extraction_rate=r, 
+            ore1_milling_rate=r, 
+            ore2_milling_rate=0.0
         )
 
 
@@ -628,7 +425,6 @@ class ModeCMineSurging(OperatingMode):
         return "MODE_C_MINE_SURGING"
 
     def is_valid_start(self, model: drs.Module) -> bool:
-        sensors = model.sensors
         return True
 
     def check_end_conditions(self, model: drs.Module):
@@ -643,53 +439,28 @@ class ModeCMineSurging(OperatingMode):
             controller.reset_contingency_timer()
             return ModeCContingency()
 
-        # THE ORIGINAL ARENA FIX: 
-        # Only evaluate the target floor constraint if the stockpile is actively draining (Rate < 0).
-        # During mid-campaign surging, rate > 0, so this safely evaluates to False and prevents the deadlock.
-        if sensors.belief_ore_stock.rate < 0 and sensors.belief_ore_stock.value <= plant.config.target_ore_stock_level:
+        # Set threshold to tell engine exactly when to stop time!
+        sensors.belief_ore_stock.lower_threshold = plant.config.target_ore_stock_level
+
+        # End Surging only when the excess inventory is successfully burned off
+        if sensors.belief_ore_stock.value <= plant.config.target_ore_stock_level + 1e-6:
             return RequireDecision()
 
         return None
 
-    def apply_dynamics(self, model: drs.Module):
-        plant = model.plant
-        controller = model.controller
-        c = plant.config
-        mine = model.mine
-        fleet = model.fleet
-        sensors = model.sensors
-
-        p = model.sensors.belief_routing_fraction
-        r = c.mode_c_ore1_milling_rate * 1.0 / (1.0 - p)
-
-        mine.true_ore_extraction.rate = r
-        r_mill = c.mode_c_ore1_milling_rate + c.mode_c_ore2_milling_rate
-        if hasattr(plant, "true_total_cyanide_consumed"):
-            plant.true_total_cyanide_consumed.rate = r_mill * getattr(c, "mode_c_avg_cyanide", 0.0)
-        if hasattr(plant, "true_total_ore_milled"):
-            plant.true_total_ore_milled.rate = r_mill
-        mine.true_ore_extracted_from_current_parcel.rate = r
-        plant.true_ore_stock.rate = sensors.belief_ore_stock.rate = (
-            r - c.mode_c_ore1_milling_rate - c.mode_c_ore2_milling_rate
-        )
-        # 1. Set the Fleet Routing Policy
-        fleet.fraction_to_ore2 = p
+    def get_target_rates(self, model: drs.Module) -> TargetRates:
+        c = model.plant.config
+        milling_1 = c.mode_c_ore1_milling_rate
+        milling_2 = c.mode_c_ore2_milling_rate
         
-        # 2. Set the requested Outflow for the Mill 
-        plant.true_ore1_stock.set_target_outflow(r * (1.0 - p))
-        plant.true_ore2_stock.set_target_outflow(c.mode_c_ore2_milling_rate)
-
-        sensors.belief_ore1_stock.rate = 0.0
-        sensors.belief_ore2_stock.rate = r * p - c.mode_c_ore2_milling_rate
-
-        plant.true_ore_stock.lower_threshold = sensors.belief_ore_stock.lower_threshold = c.target_ore_stock_level
-        plant.true_ore2_stock.mass.lower_threshold = sensors.belief_ore2_stock.lower_threshold = 0.0
-
-
-        controller.time_mode_c_surging.rate = 1.0
-        controller.time_executed_campaign_shutdown.rate = 1.0
-        controller.time_executed_campaign_shutdown.upper_threshold = (
-            controller.config.duration_of_production_campaigns
+        p = model.sensors.belief_routing_fraction
+        # Mine extracts EXACTLY enough total rock to yield the required Ore 1
+        extraction = (milling_1 / (1.0 - p)) if (1.0 - p) > 0 else 0.0
+        
+        return TargetRates(
+            extraction_rate=extraction,
+            ore1_milling_rate=milling_1,
+            ore2_milling_rate=milling_2,
         )
 
 
@@ -724,42 +495,16 @@ class ModeD(OperatingMode):
 
         return None
 
-    def apply_dynamics(self, model: drs.Module):
-        plant = model.plant
-        controller = model.controller
-        c = plant.config
-        mine = model.mine
-        fleet = model.fleet
-        sensors = model.sensors
-
-        p = model.sensors.belief_routing_fraction
-        r = c.mode_d_ore1_milling_rate + c.mode_d_ore2_milling_rate
-
-        mine.true_ore_extraction.rate = r
-        if hasattr(plant, "true_total_cyanide_consumed"):
-            plant.true_total_cyanide_consumed.rate = r * getattr(c, "mode_d_avg_cyanide", 0.0)
-        if hasattr(plant, "true_total_ore_milled"):
-            plant.true_total_ore_milled.rate = r
-        mine.true_ore_extracted_from_current_parcel.rate = r
-        plant.true_ore_stock.rate = sensors.belief_ore_stock.rate = 0.0
-        # 1. Set the Fleet Routing Policy
-        fleet.fraction_to_ore2 = p
+    def get_target_rates(self, model: drs.Module) -> TargetRates:
+        c = model.plant.config
+        milling_1 = c.mode_d_ore1_milling_rate
+        milling_2 = c.mode_d_ore2_milling_rate
         
-        # 2. Set the requested Outflow for the Mill 
-        plant.true_ore1_stock.set_target_outflow(c.mode_d_ore1_milling_rate)
-        plant.true_ore2_stock.set_target_outflow(c.mode_d_ore2_milling_rate)
-
-        sensors.belief_ore1_stock.rate = r * (1.0 - p) - c.mode_d_ore1_milling_rate
-        sensors.belief_ore2_stock.rate = r * p - c.mode_d_ore2_milling_rate
-
-        plant.true_ore1_stock.mass.lower_threshold = sensors.belief_ore1_stock.lower_threshold = 0.0
-        plant.true_ore2_stock.mass.lower_threshold = sensors.belief_ore2_stock.lower_threshold = 0.0
-
-
-        controller.time_mode_d.rate = 1.0
-        controller.time_executed_campaign_shutdown.rate = 1.0
-        controller.time_executed_campaign_shutdown.upper_threshold = (
-            controller.config.duration_of_production_campaigns
+        # Fleet provides exactly what gets used
+        return TargetRates(
+            extraction_rate=(milling_1 + milling_2), 
+            ore1_milling_rate=milling_1, 
+            ore2_milling_rate=milling_2
         )
 
 
@@ -773,7 +518,6 @@ class ModeDContingency(OperatingMode):
         return "MODE_D_CONTINGENCY"
 
     def is_valid_start(self, model: drs.Module) -> bool:
-        sensors = model.sensors
         return True
 
     def check_end_conditions(self, model: drs.Module):
@@ -792,45 +536,15 @@ class ModeDContingency(OperatingMode):
 
         return None
 
-    def apply_dynamics(self, model: drs.Module):
-        plant = model.plant
-        controller = model.controller
-        c = plant.config
-        mine = model.mine
-        fleet = model.fleet
-        sensors = model.sensors
-
-        p = model.sensors.belief_routing_fraction
+    def get_target_rates(self, model: drs.Module) -> TargetRates:
+        c = model.plant.config
         r = c.mode_d_contingency_ore2_milling_rate
-
-        mine.true_ore_extraction.rate = r
-        if hasattr(plant, "true_total_cyanide_consumed"):
-            plant.true_total_cyanide_consumed.rate = r * getattr(c, "mode_d_contingency_avg_cyanide", 0.0)
-        if hasattr(plant, "true_total_ore_milled"):
-            plant.true_total_ore_milled.rate = r
-        mine.true_ore_extracted_from_current_parcel.rate = r
-        plant.true_ore_stock.rate = sensors.belief_ore_stock.rate = 0.0
-        # 1. Set the Fleet Routing Policy
-        fleet.fraction_to_ore2 = p
         
-        # 2. Set the requested Outflow for the Mill 
-        plant.true_ore1_stock.set_target_outflow(0.0)
-        plant.true_ore2_stock.set_target_outflow(r)
-
-        sensors.belief_ore1_stock.rate = r * (1.0 - p)
-        sensors.belief_ore2_stock.rate = r * p - r
-
-        plant.true_ore2_stock.mass.lower_threshold = sensors.belief_ore2_stock.lower_threshold = 0.0
-
-
-        controller.time_mode_d_contingency.rate = 1.0
-        controller.time_executed_campaign_shutdown.rate = 1.0
-        controller.time_executed_contingency.rate = 1.0
-        controller.time_executed_campaign_shutdown.upper_threshold = (
-            controller.config.duration_of_production_campaigns
-        )
-        controller.time_executed_contingency.upper_threshold = (
-            controller.config.duration_of_contingency_segments
+        # Fleet slows down to exactly match the throttled plant
+        return TargetRates(
+            extraction_rate=r, 
+            ore1_milling_rate=0.0, 
+            ore2_milling_rate=r
         )
 
 
@@ -844,7 +558,6 @@ class ModeDMineSurging(OperatingMode):
         return "MODE_D_MINE_SURGING"
 
     def is_valid_start(self, model: drs.Module) -> bool:
-        sensors = model.sensors
         return True
 
     def check_end_conditions(self, model: drs.Module):
@@ -859,51 +572,26 @@ class ModeDMineSurging(OperatingMode):
             controller.reset_contingency_timer()
             return ModeDContingency()
 
-        # THE ORIGINAL ARENA FIX: 
-        # Only evaluate the target floor constraint if the stockpile is actively draining (Rate < 0).
-        # During mid-campaign surging, rate > 0, so this safely evaluates to False and prevents the deadlock.
-        if sensors.belief_ore_stock.rate < 0 and sensors.belief_ore_stock.value <= plant.config.target_ore_stock_level:
+        # Set threshold to tell engine exactly when to stop time!
+        sensors.belief_ore_stock.lower_threshold = plant.config.target_ore_stock_level
+
+        # End Surging only when the excess inventory is successfully burned off
+        if sensors.belief_ore_stock.value <= plant.config.target_ore_stock_level + 1e-6:
             return RequireDecision()
 
         return None
 
-    def apply_dynamics(self, model: drs.Module):
-        plant = model.plant
-        controller = model.controller
-        c = plant.config
-        mine = model.mine
-        fleet = model.fleet
-        sensors = model.sensors
-
-        p = model.sensors.belief_routing_fraction
-        r = c.mode_d_ore2_milling_rate * 1.0 / p
-
-        mine.true_ore_extraction.rate = r
-        r_mill = c.mode_d_ore1_milling_rate + c.mode_d_ore2_milling_rate
-        if hasattr(plant, "true_total_cyanide_consumed"):
-            plant.true_total_cyanide_consumed.rate = r_mill * getattr(c, "mode_d_avg_cyanide", 0.0)
-        if hasattr(plant, "true_total_ore_milled"):
-            plant.true_total_ore_milled.rate = r_mill
-        mine.true_ore_extracted_from_current_parcel.rate = r
-        plant.true_ore_stock.rate = sensors.belief_ore_stock.rate = (
-            r - c.mode_d_ore1_milling_rate - c.mode_d_ore2_milling_rate
-        )
-        # 1. Set the Fleet Routing Policy
-        fleet.fraction_to_ore2 = p
+    def get_target_rates(self, model: drs.Module) -> TargetRates:
+        c = model.plant.config
+        milling_1 = c.mode_d_ore1_milling_rate
+        milling_2 = c.mode_d_ore2_milling_rate
         
-        # 2. Set the requested Outflow for the Mill 
-        plant.true_ore1_stock.set_target_outflow(c.mode_d_ore1_milling_rate)
-        plant.true_ore2_stock.set_target_outflow(r * p)
-
-        sensors.belief_ore1_stock.rate = r * (1.0 - p) - c.mode_d_ore1_milling_rate
-        sensors.belief_ore2_stock.rate = 0.0
-
-        plant.true_ore_stock.lower_threshold = sensors.belief_ore_stock.lower_threshold = c.target_ore_stock_level
-        plant.true_ore1_stock.mass.lower_threshold = sensors.belief_ore1_stock.lower_threshold = 0.0
-
-
-        controller.time_mode_d_surging.rate = 1.0
-        controller.time_executed_campaign_shutdown.rate = 1.0
-        controller.time_executed_campaign_shutdown.upper_threshold = (
-            controller.config.duration_of_production_campaigns
+        p = model.sensors.belief_routing_fraction
+        # Mine extracts EXACTLY enough total rock to yield the required Ore 2
+        extraction = (milling_2 / p) if p > 0 else 0.0
+        
+        return TargetRates(
+            extraction_rate=extraction,
+            ore1_milling_rate=milling_1,
+            ore2_milling_rate=milling_2,
         )

@@ -1,6 +1,7 @@
 import math
 from typing import Iterator
-from .variables import Variable, Level, Timer, State
+from .variables import Variable, Level, Timer
+from .execution_context import ExecutionContext
 
 
 class Module:
@@ -14,33 +15,55 @@ class Module:
         self._modules = {}
         self.parent = None
         self._post_step_hooks = []
+        self._dependencies = []
+
+    def __call__(self, *args, **kwargs):
+        previous = ExecutionContext.get_current()
+        ExecutionContext.push(self)
+        try:
+            return self.forward(*args, **kwargs)
+        finally:
+            ExecutionContext.pop()
+
+    def forward(self, *args, **kwargs):
+        raise NotImplementedError("Module subclasses must implement forward()")
 
     def __setattr__(self, name, value):
+        if name.startswith("_"):
+            super().__setattr__(name, value)
+            return
+
+        if hasattr(self, "_variables"):
+            self._variables.pop(name, None)
+        if hasattr(self, "_modules") and name != "parent":
+            self._modules.pop(name, None)
+
         if isinstance(value, Variable):
             if not hasattr(self, "_variables"):
                 raise AttributeError(
-                    "cannot assign variable before Module.__init__() call"
+                    "Cannot assign variable before Module.__init__() call"
                 )
             self._variables[name] = value
+            value._owner = self
+            value._var_name_in_module = name
         elif isinstance(value, Module) and name != "parent":
             if not hasattr(self, "_modules"):
                 raise AttributeError(
-                    "cannot assign module before Module.__init__() call"
+                    "Cannot assign module before Module.__init__() call"
                 )
             self._modules[name] = value
-            value.parent = self
-        elif isinstance(value, list) and all(isinstance(v, Variable) for v in value):
-            if not hasattr(self, "_variables"):
-                raise AttributeError(
-                    "cannot assign variable before Module.__init__() call"
-                )
-            for i, v in enumerate(value):
-                self._variables[f"{name}_{i}"] = v
+            if not getattr(value, "parent", None):
+                value.parent = self
 
         super().__setattr__(name, value)
 
+    def _record_incoming_edge(self, variable: Variable):
+        """Record that this module reads 'variable' (owned by another module)."""
+        if variable._owner is not None and variable._owner is not self:
+            self._dependencies.append((variable._owner, variable))
+
     def variables(self) -> Iterator[Variable]:
-        """Recursively yield all variables in this module and sub-modules without duplicates."""
+        """Recursively yield all variables without duplicates."""
         seen = set()
 
         def _get_vars(module):
@@ -54,20 +77,35 @@ class Module:
 
         yield from _get_vars(self)
 
-    def update_rates(self):
-        """Override this to define the continuous dynamics (rates and thresholds)."""
-        raise NotImplementedError("Module subclasses must implement update_rates()")
+    def modules(self) -> Iterator["Module"]:
+        """Recursively yield this module and all nested modules."""
+        for _, module in self.named_modules():
+            yield module
+
+    def named_modules(self, prefix: str = "") -> Iterator[tuple[str, "Module"]]:
+        """Recursively yield ``(path, module)`` pairs using PyTorch-style names."""
+        seen = set()
+
+        def _get_modules(module, module_prefix):
+            module_id = id(module)
+            if module_id in seen:
+                return
+            seen.add(module_id)
+            yield module_prefix, module
+
+            for name, sub_mod in module._modules.items():
+                sub_prefix = name if not module_prefix else f"{module_prefix}.{name}"
+                yield from _get_modules(sub_mod, sub_prefix)
+
+        yield from _get_modules(self, prefix)
 
     def zero_rates(self):
-        """Zero out rates and remove thresholds for all variables before the next rate update."""
+        """Zero out rates and remove thresholds for all Levels before the next rate update."""
         for var in self.variables():
-            var.rate = 0.0
-            var.upper_threshold = math.inf
-            var.lower_threshold = -math.inf
-
-    def check_transitions(self, trigger_var: Variable = None, is_upper: bool = True):
-        """Override this to define discrete state changes. Explicitly delegate to sub-modules or registries here."""
-        pass
+            if isinstance(var, Level):
+                var._rate = 0.0
+                var.upper_threshold = math.inf
+                var.lower_threshold = -math.inf
 
     def initialize_state(self):
         """Override this to set up initial state before the simulation starts."""
@@ -86,6 +124,10 @@ class Module:
         for hook in self._post_step_hooks:
             hook(current_time)
 
+    def get_dependency_graph(self) -> list:
+        """Return the recorded read dependencies as (source_module, reader_module, variable) triples."""
+        return self._dependencies
+
 
 class drs:
     """A namespace to mimic PyTorch's structure"""
@@ -94,4 +136,3 @@ class drs:
     Variable = Variable
     Level = Level
     Timer = Timer
-    State = State

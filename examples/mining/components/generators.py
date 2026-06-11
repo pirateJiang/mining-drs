@@ -1,8 +1,35 @@
 import random
 import numpy as np
 import gstools as gs
-from drs.data import BaseOreGenerator, OreParcel
+from abc import ABC, abstractmethod
 from .config import ConcentratorConfig, CyanidationConfig
+
+class OreParcel:
+    """The standard unit of data passed from geology to the plant."""
+
+    def __init__(self, mass: float, grade: float = 0.0, **kwargs):
+        self.mass = mass
+        self.grade = grade
+
+        # Dynamically assign any other passed attributes (like cyanide_kpt, hardness, etc.)
+        for key, value in kwargs.items():
+            setattr(self, key, value)
+
+    def __repr__(self):
+        attrs = ", ".join(f"{k}={v}" for k, v in self.__dict__.items())
+        return f"OreParcel({attrs})"
+
+
+class BaseOreGenerator(ABC):
+    """The abstract base class for all geology data sources."""
+
+    def __iter__(self):
+        return self
+
+    @abstractmethod
+    def __next__(self) -> OreParcel:
+        """Must yield the next parcel of ore, or raise StopIteration."""
+        pass
 
 
 class StochasticFaciesGradeGenerator(BaseOreGenerator):

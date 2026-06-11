@@ -20,6 +20,6 @@ __all__ = [
     "ConcentratorSensorNetwork",
     "CyanidationSensorNetwork",
     
-    # Nodes
+    # Physical modules
     "Stockpile",
 ]

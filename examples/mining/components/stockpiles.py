@@ -1,7 +1,9 @@
 from typing import List, Dict, Optional
-from drs.network import Node
+from drs.data import Flow
+from drs.module import drs
 
-class Stockpile(Node):
+
+class Stockpile(drs.Module):
     def __init__(
         self,
         name: str,
@@ -9,50 +11,48 @@ class Stockpile(Node):
         initial_mass: float = 0.0,
         initial_attributes: Optional[Dict[str, float]] = None,
     ):
-        # Initialize Node with mass and trace attributes
-        super().__init__(name, attributes=["mass"] + expected_attributes)
+        super().__init__()
+        self.name = name
         self.expected_attributes = expected_attributes
-        self.target_mass_outflow = 0.0
-        
-        # Backwards Compatibility: Force Level names to match legacy telemetry perfectly
-        self.accumulations["mass"].name = f"{name}_mass"
-        self.accumulations["mass"].value = initial_mass
-        
+
+        self.mass = drs.Level(f"{name}_mass", initial_value=initial_mass)
+
         initial_attributes = initial_attributes or {}
         for attr in expected_attributes:
-            self.accumulations[attr].name = f"{name}_{attr}"
-            self.accumulations[attr].value = initial_attributes.get(attr, 0.0)
-
-        # Backwards Compatibility: Provide original variable aliases used by the Engine/Plots
-        self.mass = self.accumulations["mass"]
-        self.attributes = {attr: self.accumulations[attr] for attr in expected_attributes}
+            setattr(self, attr, drs.Level(f"{name}_{attr}", initial_value=initial_attributes.get(attr, 0.0)))
 
     def current_concentration(self, attr: str) -> float:
-        if attr not in self.attributes:
+        level = getattr(self, attr, None)
+        if level is None:
             return 0.0
         safe_mass = max(1e-6, self.mass.value)
-        return self.attributes[attr].value / safe_mass
+        return level.value / safe_mass
 
-    def set_target_outflow(self, mass_rate: float):
-        """Replaces take_outflow(). Defines the mass requested by the mill for this tick."""
-        self.target_mass_outflow = mass_rate
-
-    def resolve_outgoing_flow(self):
-        """The Network orchestrates this. Automatically applies trace concentrations to outflows."""
-        if not self.out_edges:
-            return
-        
-        # Push proportional trace elements down the outgoing edge to the mill
-        out_edge = self.out_edges[0]
-        
+    def forward(self, inflow: Flow, requested_outflow_rate: float) -> Flow:
+        """Process inflow, apply conservation, and return actual achievable outflow."""
         # Prevent deadlock: clamp outflow if stockpile is empty
-        actual_outflow = self.target_mass_outflow
+        actual_outflow = requested_outflow_rate
         if self.mass.value <= 1e-6:
-            inflow = sum(edge.flow_rates.get("mass", 0.0) for edge in self.in_edges)
-            actual_outflow = min(actual_outflow, inflow)
-            
-        rates = {"mass": actual_outflow}
+            actual_outflow = min(actual_outflow, inflow.rate)
+
+        outflow = Flow(
+            rate=actual_outflow,
+            attributes={
+                attr: actual_outflow * self.current_concentration(attr)
+                for attr in self.expected_attributes
+            },
+        )
+
+        self.mass.rate = inflow.rate - outflow.rate
         for attr in self.expected_attributes:
-            rates[attr] = actual_outflow * self.current_concentration(attr)
-            
-        out_edge.set_rates(rates)
+            level = getattr(self, attr)
+            level.rate = inflow.attributes.get(attr, 0.0) - outflow.attributes.get(attr, 0.0)
+
+        # CRITICAL FIX: Tell the engine to calculate a dt to stop exactly at 0.0
+        if self.mass.rate < 0:
+            self.mass.lower_threshold = 0.0
+            for attr in self.expected_attributes:
+                level = getattr(self, attr)
+                level.lower_threshold = 0.0
+
+        return outflow

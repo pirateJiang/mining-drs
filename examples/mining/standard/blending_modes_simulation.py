@@ -12,6 +12,7 @@ import random
 import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
+import types
 
 from examples.mining.components import ConcentratorConfig, ConcentratorModel
 from drs import DRSEngine
@@ -28,6 +29,7 @@ def evaluate_throughput(config: ConcentratorConfig, N: int) -> tuple[float, floa
         # By setting the replication length very high we let it hit the 6.6M extraction condition
         # and then the model automatically terminates
         sim = ConcentratorModel(config)
+
         engine = DRSEngine(sim)
 
         # Set a random seed so different replications are different
@@ -61,8 +63,8 @@ def evaluate_throughput(config: ConcentratorConfig, N: int) -> tuple[float, floa
     return float(np.mean(throughputs)), float(np.std(throughputs))
 
 
-def plot_monte_carlo_throughput(N: int = 100, total_stockpile_level: float = 60000.0):
-    sigmas = [0.0, 1.0, 2.0, 3.0, 4.0, 5.0]
+def plot_monte_carlo_throughput(N: int = 1, total_stockpile_level: float = 60000.0):
+    sigmas = [5.0]
     results = []
 
     print(f"\n--- Running Monte Carlo Evaluation for Standard (N={N}) ---")
@@ -71,6 +73,7 @@ def plot_monte_carlo_throughput(N: int = 100, total_stockpile_level: float = 600
             replication_length=99999.0,
             std_dev_grade=sigma,
             target_ore_stock_level=total_stockpile_level,
+            prob_new_facies=0.3,
         )
         mean, std = evaluate_throughput(config, N)
         results.append((sigma, mean, std))
@@ -116,7 +119,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--total_stockpile_level", type=float, default=60000.0)
     parser.add_argument("--std_dev_grade", type=float, default=5.0)
-    parser.add_argument("--N", type=int, default=100)
+    parser.add_argument("--N", type=int, default=1)
     args = parser.parse_args()
 
     # You can also run it a single time and print out the statistics to evaluate how it spends time
@@ -126,32 +129,24 @@ if __name__ == "__main__":
         replication_length=99999.0,
         target_ore_stock_level=args.total_stockpile_level,
         std_dev_grade=args.std_dev_grade,
+        prob_new_facies=0.3,
     )
     sim = ConcentratorModel(config, enable_telemetry=True)
-    
+
     # Generates an interactive dashboard spanning all operating modes
-    from examples.mining.components.modes import ModeA, ModeAContingency, ModeAMineSurging, ModeB, ModeBContingency, ModeBMineSurging, Shutdown
-    from drs.visualizer import TopologyVisualizer
-    
-    modes_to_test = [
-        ModeA(), ModeAContingency(), ModeAMineSurging(),
-        ModeB(), ModeBContingency(), ModeBMineSurging(),
-        Shutdown()
-    ]
-    
-    visualizer = TopologyVisualizer(sim.supply_network)
-    
-    for mode in modes_to_test:
-        sim.controller.current_mode.value = mode
-        sim.update_rates() 
-        visualizer.capture_mode_state(mode.name)
-        
-    visualizer.build("interactive_concentrator_modes.html")
-    
-    # Reset controller state back to ModeA before time simulation begins
+    from examples.mining.components.modes import (
+        ModeA,
+        ModeAContingency,
+        ModeAMineSurging,
+        ModeB,
+        ModeBContingency,
+        ModeBMineSurging,
+        Shutdown,
+    )
+
+    # Run your massive Monte Carlo simulation at lightning speed
     sim.controller.current_mode.value = ModeA()
-    sim.update_rates()
-    
+
     engine = DRSEngine(sim)
     engine.run(max_time=config.replication_length)
     sim.print_statistics()
@@ -284,7 +279,11 @@ if __name__ == "__main__":
             "func": plot_ore_with_modes,
             "kwargs": {
                 "time_col": "time",
-                "ore_cols": ["TrueOreStock_Level", "TrueOre1Stock_mass", "TrueOre2Stock_mass"],
+                "ore_cols": [
+                    "TrueOreStock_Level",
+                    "TrueOre1Stock_mass",
+                    "TrueOre2Stock_mass",
+                ],
                 "mode_col": "current_mode_name",
                 "campaign_split_mode": "SHUTDOWN",
                 "title": "Ore Stockpiles & Campaigns",

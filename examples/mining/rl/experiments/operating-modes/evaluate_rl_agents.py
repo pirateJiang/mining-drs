@@ -640,13 +640,16 @@ def generate_rl_dashboard(
 
     from drs.plot import (
         plot_time_series,
-        plot_ore_with_modes,
         plot_dual_axis_step,
         plot_safety_margin,
-        plot_state_space,
         plot_mode_distribution,
-        plot_cumulative_throughput,
         plot_mode_dwell_times,
+        build_dashboard,
+    )
+    from examples.mining.components.plot import (
+        plot_ore_with_modes,
+        plot_state_space,
+        plot_cumulative_throughput,
         plot_normalized_deviation_violin,
         plot_attributed_deficit,
         plot_deficit_disparity,
@@ -654,7 +657,6 @@ def generate_rl_dashboard(
         plot_structural_vs_operational_deficit,
         plot_normalized_cumulative_deficit,
         plot_structural_vs_operational_by_mode,
-        build_dashboard,
     )
 
     palette = {

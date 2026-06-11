@@ -1,55 +1,26 @@
 import random
 import numpy as np
 import gstools as gs
-from abc import ABC, abstractmethod
+from drs.module import drs
 from .config import ConcentratorConfig, CyanidationConfig
 
-class OreParcel:
-    """The standard unit of data passed from geology to the plant."""
 
-    def __init__(self, mass: float, grade: float = 0.0, **kwargs):
-        self.mass = mass
-        self.grade = grade
-
-        # Dynamically assign any other passed attributes (like cyanide_kpt, hardness, etc.)
-        for key, value in kwargs.items():
-            setattr(self, key, value)
-
-    def __repr__(self):
-        attrs = ", ".join(f"{k}={v}" for k, v in self.__dict__.items())
-        return f"OreParcel({attrs})"
-
-
-class BaseOreGenerator(ABC):
-    """The abstract base class for all geology data sources."""
-
-    def __iter__(self):
-        return self
-
-    @abstractmethod
-    def __next__(self) -> OreParcel:
-        """Must yield the next parcel of ore, or raise StopIteration."""
-        pass
-
-
-class StochasticFaciesGradeGenerator(BaseOreGenerator):
-    """The random math version, matching your current logic."""
+class StochasticFaciesGradeGenerator(drs.DataSource):
+    """Random facies-based grade generation for the Concentrator model."""
 
     def __init__(self, config: ConcentratorConfig):
+        super().__init__()
         self.config = config
         self.next_is_new_facies = True
         self.current_grade = config.mean_grade
         self.first_call = True
 
-    def __iter__(self):
-        return self
-
-    def __next__(self) -> OreParcel:
+    def __next__(self) -> drs.DataPoint:
         c = self.config
 
         if self.first_call:
             self.first_call = False
-            return OreParcel(mass=40000.0, grade=c.mean_grade)
+            return drs.DataPoint(mass=40000.0, grade=c.mean_grade)
 
         mass = random.uniform(c.min_ore_mass, c.max_ore_mass)
 
@@ -64,13 +35,14 @@ class StochasticFaciesGradeGenerator(BaseOreGenerator):
         self.current_grade = max(grade, 0.0)
         self.next_is_new_facies = random.random() <= c.prob_new_facies
 
-        return OreParcel(mass=mass, grade=self.current_grade)
+        return drs.DataPoint(mass=mass, grade=self.current_grade)
 
 
-class CyanideGeostatisticalBlockGenerator(BaseOreGenerator):
+class CyanideGeostatisticalBlockGenerator(drs.DataSource):
     """Generates equiprobable 2D spatial block models using Sequential Gaussian Simulation."""
 
     def __init__(self, config: CyanidationConfig):
+        super().__init__()
         self.config = config
 
         # 1. Define the variogram model (matching Table 3 in the paper)
@@ -113,7 +85,6 @@ class CyanideGeostatisticalBlockGenerator(BaseOreGenerator):
             mu = np.log(m) - sigma_sq / 2.0
             cyanide = np.exp(mu + np.sqrt(sigma_sq) * field)
         else:
-            # Fallback to linear if standard deviation is 0 or mean is 0
             cyanide = (
                 field * self.config.std_dev_cyanide_consumption
                 + self.config.mean_cyanide_consumption
@@ -122,37 +93,23 @@ class CyanideGeostatisticalBlockGenerator(BaseOreGenerator):
         self.cyanide_field = np.maximum(cyanide, 0.0)
 
     def create_bench_and_fill_sequence(self):
-        # TODO: A simple raster scan is an acceptable approximation here, but for strict
-        # fidelity to the paper, the coordinates should be indexed according to the exact
-        # staggered stoping sequence depicted in Figure 14 (dictated by horizontal/long-hole drilling).
-
         # Yield cyanide consumption traversing the block model (bench by bench, top-down)
-        # Assuming y is elevation, mine from highest y to lowest y
         for y_idx in reversed(range(self.cyanide_field.shape[1])):
             for x_idx in range(self.cyanide_field.shape[0]):
                 au_eq = self.au_eq_field[x_idx, y_idx]
                 cyanide_consumption = self.cyanide_field[x_idx, y_idx]
 
-                # Discard blocks (Waste 'W') where the deterministic Au_eq grade is below the 2.8 g/t cut-off
                 if au_eq >= 2.8:
                     yield cyanide_consumption
 
-    def __iter__(self):
-        return self
-
-    def __next__(self) -> OreParcel:
+    def __next__(self) -> drs.DataPoint:
         while True:
             try:
                 cyanide_val = next(self.mining_sequence)
                 break
             except StopIteration:
-                # If we exhaust the block model, generate a new cyanide realization (equiprobable model)
                 self.generate_new_cyanide_realization()
                 self.mining_sequence = self.create_bench_and_fill_sequence()
 
-        # The paper blocks are 4m x 4m, we'll randomize mass within the configured bounds
-        # or we could use a fixed mass for a 4x4xH block, but we stick to config bounds
         mass = random.uniform(self.config.min_ore_mass, self.config.max_ore_mass)
-
-        # We pass cyanide consumption under the cyanide_kpt kwarg
-        return OreParcel(mass=mass, cyanide_kpt=cyanide_val)
+        return drs.DataPoint(mass=mass, cyanide_kpt=cyanide_val)

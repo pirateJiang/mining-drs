@@ -48,6 +48,8 @@ class Expression:
             return l_val == r_val
         if self.op == "ne":
             return l_val != r_val
+        if self.op == "pow":
+            return l_val ** r_val
         return 0.0
 
     def get_sources(self) -> list:
@@ -61,8 +63,9 @@ class Expression:
         op_chars = {
             "add": "+", "sub": "-", "mul": "*", "div": "/",
             "gt": ">", "lt": "<", "ge": ">=", "le": "<=",
-            "eq": "==", "ne": "!=",
+            "eq": "==", "ne": "!=", "pow": "**",
         }
+        unary_chars = {"neg": "-", "pos": "+", "abs": "|"}
 
         def format_node(node):
             if isinstance(node, Expression):
@@ -76,6 +79,10 @@ class Expression:
                 return node.name
             return str(node)
 
+        if self.op in unary_chars:
+            l = unary_chars[self.op]
+            r = unary_chars[self.op] if self.op == "abs" else ""
+            return f"({l}{format_node(self.left)}{r})"
         return f"({format_node(self.left)} {op_chars.get(self.op, '?')} {format_node(self.right)})"
 
     def __bool__(self):
@@ -102,6 +109,8 @@ class Expression:
     def __le__(self, other): return Expression("le", self, other)
     def __eq__(self, other): return Expression("eq", self, other)
     def __ne__(self, other): return Expression("ne", self, other)
+    def __pow__(self, other): return Expression("pow", self, other)
+    def __rpow__(self, other): return Expression("pow", other, self)
 
 
 class Variable:
@@ -176,6 +185,7 @@ class Variable:
         if op == "le": return l_val <= r_val
         if op == "eq": return l_val == r_val
         if op == "ne": return l_val != r_val
+        if op == "pow": return l_val ** r_val
         return NotImplemented
 
     def _rop(self, op: str, other):
@@ -190,6 +200,7 @@ class Variable:
         if op == "sub": return l_val - r_val
         if op == "mul": return l_val * r_val
         if op == "div": return l_val / r_val if r_val != 0 else 0.0
+        if op == "pow": return l_val ** r_val
         return NotImplemented
 
     def __neg__(self):
@@ -224,6 +235,8 @@ class Variable:
     def __le__(self, other): return self._op("le", other)
     def __eq__(self, other): return self._op("eq", other)
     def __ne__(self, other): return self._op("ne", other)
+    def __pow__(self, other): return self._op("pow", other)
+    def __rpow__(self, other): return self._rop("pow", other)
 
 
 class Level(Variable):
@@ -237,6 +250,7 @@ class Level(Variable):
 
     @property
     def rate(self) -> float:
+        self._record_read_dependency()
         if isinstance(self._rate, Expression):
             return self._rate.evaluate()
         return self._rate

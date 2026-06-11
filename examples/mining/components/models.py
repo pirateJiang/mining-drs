@@ -88,25 +88,40 @@ class BaseBlendingModel(drs.Module):
                     lambda t, m, s, h: m.sensors.belief_ore2_cyanide.value,
                 )
 
+    def _get_mine_attr_value(self) -> float:
+        raise NotImplementedError("Subclasses must define which attribute the mine exposes.")
+
     def forward(self):
         self.global_time.rate = 1.0
 
         # 1. Logic & Commands (Reads state from previous tick)
-        current_mode = self.controller() 
-        raw_flow = self.mine(current_mode)
-        flow1, flow2 = self.fleet(raw_flow, current_mode)
+        current_mode = self.controller()
+        self.mine(current_mode)
+        self.fleet()
 
-        # The mode dictates how much the mill *wants*
+        # 2. Physics & Flow — mine & fleet state drives stockpile inflow rates
+        r = self.mine.true_ore_extraction.rate
+        f = self.fleet.fraction_to_ore2.value
+        attr_value = self._get_mine_attr_value()
+
         targets = current_mode.get_target_rates(self)
         requested_1 = targets.ore1_milling_rate
         requested_2 = targets.ore2_milling_rate
 
-        # 2. Physics & Flow
-        actual_flow1 = self.plant.true_ore1_stock(*flow1, requested_1)
-        actual_flow2 = self.plant.true_ore2_stock(*flow2, requested_2)
-        self.plant(actual_flow1, actual_flow2, current_mode)
+        s1, s2 = self.plant.true_ore1_stock, self.plant.true_ore2_stock
+        s1.mass.rate = r * (1.0 - f)
+        s2.mass.rate = r * f
+        for attr in s1.expected_attributes:
+            getattr(s1, attr).rate = r * (1.0 - f) * attr_value
+            getattr(s2, attr).rate = r * f * attr_value
 
-        # 3. Observation (Sensors record the newly calculated rates)
+        s1(requested_1)
+        s2(requested_2)
+
+        # 3. Plant reads stockpile outflows
+        self.plant()
+
+        # 4. Observation (Sensors record the newly calculated rates)
         self.sensors()
 
     def is_terminating_condition_met(self) -> bool:
@@ -183,6 +198,9 @@ class ConcentratorModel(BaseBlendingModel):
 
         self.setup_telemetry()
 
+    def _get_mine_attr_value(self) -> float:
+        return self.mine.true_current_parcel_grade.value
+
 
 class CyanidationModel(BaseBlendingModel):
     """
@@ -201,3 +219,6 @@ class CyanidationModel(BaseBlendingModel):
         self.controller = CyanidationController(self.config, self.sensors, self.mine, self.fleet, self.plant)
 
         self.setup_telemetry()
+
+    def _get_mine_attr_value(self) -> float:
+        return self.mine.true_current_parcel_cyanide.value

@@ -170,6 +170,60 @@ dashboard = build_dashboard(df, configs=[
     {"func": plot_time_series, "kwargs": {"y_columns": ["Ore_Stock_mass"]}}
 ])
 dashboard.savefig("results.png")
+
+### Step 5: Data Sources (Streaming Data with DataSource / DataPoint)
+
+In real mining operations, ore doesn't appear magically — it arrives as a stream of heterogeneous parcels, each with its own mass, grade, and geochemistry. The `drs.DataSource` / `drs.DataPoint` pair gives you a standard way to model this:
+
+- **`drs.DataSource`** is an iterator (like PyTorch's `DataLoader`). Subclass it and implement `__next__` to yield batches of data.
+- **`drs.DataPoint`** is a lightweight container. Fields are accessed as attributes — pass any keyword args to `__init__`.
+
+Python
+from drs import drs
+import random
+
+class TruckDataSource(drs.DataSource):
+    def __init__(self, avg_mass=50.0):
+        super().__init__()
+        self.avg_mass = avg_mass
+        self.count = 0
+        self.max_loads = 10
+
+    def __next__(self) -> drs.DataPoint:
+        if self.count >= self.max_loads:
+            raise StopIteration
+        self.count += 1
+        mass = random.uniform(0.8, 1.2) * self.avg_mass
+        grade = random.uniform(0.5, 1.5)
+        return drs.DataPoint(mass=mass, grade=grade)
+
+# Usage in a Module:
+class TruckUnloader(drs.Module):
+    def __init__(self, source: drs.DataSource):
+        super().__init__()
+        self.source = source
+        self.parcel_mass = drs.Variable("parcel_mass", 0.0)
+        self.parcel_grade = drs.Variable("parcel_grade", 0.0)
+
+    def load_next(self):
+        try:
+            parcel = self.source.next()  # or: next(self.source)
+            self.parcel_mass.value = parcel.mass
+            self.parcel_grade.value = parcel.grade
+        except StopIteration:
+            pass
+
+You can also iterate directly:
+
+Python
+for parcel in source:
+    print(parcel.mass, parcel.grade)
+
+DataSources compose naturally with the engine — they are `drs.Module` subclasses, so they appear in `named_modules()`, `variables()`, and the visualization system. The mining example ships with two built-in sources:
+
+- `StochasticFaciesGradeGenerator` — random facies-based grade generation
+- `CyanideGeostatisticalBlockGenerator` — conditional simulation block models with Gaussian Sequential Simulation
+
 5. Conventions & Best Practices
 Separation of Concerns: Let physical Modules own state and dynamics. Let Modes handle strategy and desired targets.
 

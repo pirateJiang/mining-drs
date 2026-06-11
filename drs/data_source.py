@@ -1,0 +1,31 @@
+"""Generic data point for data yielded by DataSource."""
+
+
+class DataPoint:
+    """A single batch of data yielded by a DataSource.
+
+    Fields are accessed as attributes. Any keyword argument passed to
+    ``__init__`` is stored and accessible via ``.name``::
+
+        point = DataPoint(mass=40000.0, grade=30.0)
+        point.mass    # → 40000.0
+        point.grade   # → 30.0
+    """
+
+    def __init__(self, **kwargs):
+        self._data = dict(kwargs)
+
+    def __getattr__(self, name):
+        if name.startswith("_"):
+            raise AttributeError(name)
+        try:
+            return self._data[name]
+        except KeyError:
+            raise AttributeError(
+                f"'{type(self).__name__}' has no field '{name}'. "
+                f"Available fields: {list(self._data)}"
+            )
+
+    def __repr__(self):
+        items = ", ".join(f"{k}={v}" for k, v in self._data.items())
+        return f"DataPoint({items})"

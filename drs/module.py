@@ -2,6 +2,7 @@ import math
 from typing import Iterator
 from .variables import Variable, Level, Timer
 from .execution_context import ExecutionContext
+from .data_source import DataPoint
 
 
 class Module:
@@ -16,6 +17,7 @@ class Module:
         self.parent = None
         self._post_step_hooks = []
         self._dependencies = []
+        self._dep_seen = set()
 
     def __call__(self, *args, **kwargs):
         previous = ExecutionContext.get_current()
@@ -60,7 +62,10 @@ class Module:
     def _record_incoming_edge(self, variable: Variable):
         """Record that this module reads 'variable' (owned by another module)."""
         if variable._owner is not None and variable._owner is not self:
-            self._dependencies.append((variable._owner, variable))
+            key = (id(variable._owner), id(variable))
+            if key not in self._dep_seen:
+                self._dep_seen.add(key)
+                self._dependencies.append((variable._owner, variable))
 
     def variables(self) -> Iterator[Variable]:
         """Recursively yield all variables without duplicates."""
@@ -124,9 +129,51 @@ class Module:
         for hook in self._post_step_hooks:
             hook(current_time)
 
+    def clear_dependencies(self):
+        """Reset the recorded dependency graph."""
+        self._dependencies.clear()
+        self._dep_seen.clear()
+
     def get_dependency_graph(self) -> list:
-        """Return the recorded read dependencies as (source_module, reader_module, variable) triples."""
-        return self._dependencies
+        """Return all recorded read dependencies from this module and all sub-modules
+        as (source_module, variable) pairs."""
+        result = []
+        for mod in self.modules():
+            result.extend(mod._dependencies)
+        return result
+
+
+class DataSource(Module):
+    """Yields ``DataPoint`` batches one at a time.
+
+    Subclass and implement ``__next__`` to define the data stream.
+    Raise ``StopIteration`` when the stream is exhausted::
+
+        class MySource(DataSource):
+            def __init__(self):
+                super().__init__()
+                self._data = [DataPoint(x=1), DataPoint(x=2)]
+                self._index = 0
+
+            def __next__(self) -> DataPoint:
+                if self._index >= len(self._data):
+                    raise StopIteration
+                point = self._data[self._index]
+                self._index += 1
+                return point
+    """
+
+    def __init__(self):
+        super().__init__()
+
+    def __iter__(self):
+        return self
+
+    def __next__(self) -> DataPoint:
+        raise StopIteration
+
+    def next(self) -> DataPoint:
+        return next(self)
 
 
 class drs:
@@ -136,3 +183,5 @@ class drs:
     Variable = Variable
     Level = Level
     Timer = Timer
+    DataPoint = DataPoint
+    DataSource = DataSource

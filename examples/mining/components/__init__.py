@@ -1,5 +1,5 @@
 from .config import ConcentratorConfig, CyanidationConfig
-from .modes import ModeA, ModeAContingency, ModeAMineSurging, ModeB, ModeBContingency, ModeBMineSurging, Shutdown, ModeC, ModeCContingency, ModeCMineSurging, ModeD, ModeDContingency, ModeDMineSurging
+from .modes import MODES, OperatingMode, RequireDecision
 from .sensors import BaseSensorNetwork, ConcentratorSensorNetwork, CyanidationSensorNetwork
 from .generators import StochasticFaciesGradeGenerator, CyanideGeostatisticalBlockGenerator
 from .supply_chain import (

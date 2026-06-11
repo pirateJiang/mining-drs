@@ -134,18 +134,10 @@ if __name__ == "__main__":
     sim = ConcentratorModel(config, enable_telemetry=True)
 
     # Generates an interactive dashboard spanning all operating modes
-    from examples.mining.components.modes import (
-        ModeA,
-        ModeAContingency,
-        ModeAMineSurging,
-        ModeB,
-        ModeBContingency,
-        ModeBMineSurging,
-        Shutdown,
-    )
+    from examples.mining.components.modes import MODES
 
     # Run your massive Monte Carlo simulation at lightning speed
-    sim.controller.current_mode.value = ModeA()
+    sim.controller.current_mode.value = MODES["MODE_A"]
 
     engine = DRSEngine(sim)
     engine.run(max_time=config.replication_length)

@@ -17,21 +17,7 @@ from .supply_chain import (
     CyanidationFleet,
     CyanidationPlant,
 )
-from .modes import (
-    ModeA,
-    ModeAContingency,
-    ModeAMineSurging,
-    ModeB,
-    ModeBContingency,
-    ModeBMineSurging,
-    Shutdown,
-    ModeC,
-    ModeCContingency,
-    ModeCMineSurging,
-    ModeD,
-    ModeDContingency,
-    ModeDMineSurging,
-)
+from .modes import MODES
 
 
 class BaseBlendingController(drs.Module):
@@ -39,6 +25,17 @@ class BaseBlendingController(drs.Module):
     Abstract base controller handling shared DRS timers and state transitions
     for dual-stockpile surging operations.
     """
+
+    _TIMER_MAP = {
+        "MODE_A": "time_mode_a",
+        "MODE_A_CONTINGENCY": "time_mode_a_contingency",
+        "MODE_A_MINE_SURGING": "time_mode_a_surging",
+        "MODE_B": "time_mode_b",
+        "MODE_B_CONTINGENCY": "time_mode_b_contingency",
+        "MODE_B_MINE_SURGING": "time_mode_b_surging",
+        "SHUTDOWN": "time_shutdown",
+    }
+    _CONTINGENCY_MODES = {"MODE_A_CONTINGENCY", "MODE_B_CONTINGENCY"}
 
     def __init__(
         self,
@@ -55,7 +52,7 @@ class BaseBlendingController(drs.Module):
         self.fleet = fleet
         self.plant = plant
 
-        self.current_mode = drs.Variable("current_mode", ModeA())
+        self.current_mode = drs.Variable("current_mode", MODES["MODE_A"])
 
         # Initial Timer Values
         self.time_executed_campaign_shutdown = drs.Timer(
@@ -149,64 +146,48 @@ class BaseBlendingController(drs.Module):
 
     def _update_timers(self, m: str):
         c = self.config
+        timer_attr = self._TIMER_MAP.get(m)
+        if timer_attr:
+            getattr(self, timer_attr).rate = 1.0
+        self.time_executed_campaign_shutdown.rate = 1.0
+        self.time_executed_campaign_shutdown.upper_threshold = (
+            c.duration_of_shutdowns if m == "SHUTDOWN" else c.duration_of_production_campaigns
+        )
+        if m in self._CONTINGENCY_MODES:
+            self.time_executed_contingency.rate = 1.0
+            self.time_executed_contingency.upper_threshold = c.duration_of_contingency_segments
 
-        # All modes update campaign timer except shutdown, but shutdown updates it anyway
-        # Actually let's just explicitly map what each mode updates.
-        if m == "MODE_A":
-            self.time_mode_a.rate = 1.0
-            self.time_executed_campaign_shutdown.rate = 1.0
-            self.time_executed_campaign_shutdown.upper_threshold = (
-                c.duration_of_production_campaigns
+    def _choose_next_campaign_mode(self, sensors, config):
+        ore2 = sensors.belief_ore2_stock.value
+        total_stock = sensors.belief_ore_stock.value
+        if ore2 > config.critical_ore2_level:
+            return (
+                MODES["MODE_A"]
+                if total_stock <= config.target_ore_stock_level
+                else MODES["MODE_A_MINE_SURGING"]
             )
-        elif m == "MODE_A_CONTINGENCY":
-            self.time_mode_a_contingency.rate = 1.0
-            self.time_executed_campaign_shutdown.rate = 1.0
-            self.time_executed_contingency.rate = 1.0
-            self.time_executed_campaign_shutdown.upper_threshold = (
-                c.duration_of_production_campaigns
-            )
-            self.time_executed_contingency.upper_threshold = (
-                c.duration_of_contingency_segments
-            )
-        elif m == "MODE_A_MINE_SURGING":
-            self.time_mode_a_surging.rate = 1.0
-            self.time_executed_campaign_shutdown.rate = 1.0
-            self.time_executed_campaign_shutdown.upper_threshold = (
-                c.duration_of_production_campaigns
-            )
-        elif m == "MODE_B":
-            self.time_mode_b.rate = 1.0
-            self.time_executed_campaign_shutdown.rate = 1.0
-            self.time_executed_campaign_shutdown.upper_threshold = (
-                c.duration_of_production_campaigns
-            )
-        elif m == "MODE_B_CONTINGENCY":
-            self.time_mode_b_contingency.rate = 1.0
-            self.time_executed_campaign_shutdown.rate = 1.0
-            self.time_executed_contingency.rate = 1.0
-            self.time_executed_campaign_shutdown.upper_threshold = (
-                c.duration_of_production_campaigns
-            )
-            self.time_executed_contingency.upper_threshold = (
-                c.duration_of_contingency_segments
-            )
-        elif m == "MODE_B_MINE_SURGING":
-            self.time_mode_b_surging.rate = 1.0
-            self.time_executed_campaign_shutdown.rate = 1.0
-            self.time_executed_campaign_shutdown.upper_threshold = (
-                c.duration_of_production_campaigns
-            )
-        elif m == "SHUTDOWN":
-            self.time_shutdown.rate = 1.0
-            self.time_executed_campaign_shutdown.rate = 1.0
-            self.time_executed_campaign_shutdown.upper_threshold = (
-                c.duration_of_shutdowns
+        else:
+            return (
+                MODES["MODE_B"]
+                if total_stock <= config.target_ore_stock_level
+                else MODES["MODE_B_MINE_SURGING"]
             )
 
     def controller_decision(self):
-        raise NotImplementedError(
-            "Subclasses must implement the specific decision policy."
-        )
+        c = self.config
+        sensors = self.sensors
+        m = self.current_mode.value.name
+
+        if self.is_campaign_complete():
+            self.reset_campaign_timer()
+            if m == "SHUTDOWN":
+                return self._choose_next_campaign_mode(sensors, c)
+            return MODES["SHUTDOWN"]
+
+        if m.endswith("_CONTINGENCY"):
+            self.reset_contingency_timer()
+        base = m.replace("_CONTINGENCY", "").replace("_MINE_SURGING", "")
+        return MODES[base]
 
 
 class ConcentratorController(BaseBlendingController):
@@ -224,81 +205,6 @@ class ConcentratorController(BaseBlendingController):
         plant: ConcentratorPlant,
     ):
         super().__init__(config, sensors, mine, fleet, plant)
-
-    def controller_decision(self):
-        c = self.config
-        sensors = self.sensors
-        m = self.current_mode.value.name
-
-        ore1 = sensors.belief_ore1_stock.value
-        ore2 = sensors.belief_ore2_stock.value
-        total_stock = sensors.belief_ore_stock.value
-
-        # 1. End of Campaign / Shutdown Check
-        if self.is_campaign_complete():
-            self.reset_campaign_timer()
-            if m == "SHUTDOWN":
-                # CSV Logic: If stock is already inflated, resume Surging immediately to burn it off
-                if ore2 > c.critical_ore2_level:
-                    return (
-                        ModeA()
-                        if total_stock <= c.target_ore_stock_level
-                        else ModeAMineSurging()
-                    )
-                else:
-                    return (
-                        ModeB()
-                        if total_stock <= c.target_ore_stock_level
-                        else ModeBMineSurging()
-                    )
-            else:
-                return Shutdown()
-
-        # 2. End of Contingency Check
-        if m in ("MODE_A_CONTINGENCY", "MODE_B_CONTINGENCY"):
-            if self.is_contingency_complete():
-                self.reset_contingency_timer()
-                return ModeA() if m == "MODE_A_CONTINGENCY" else ModeB()
-
-        # 3. Continuous Mid-Campaign Monitoring (Stockouts and Recoveries)
-        if m == "MODE_A":
-            if ore2 <= c.stockout_epsilon:
-                return ModeAContingency()
-            if ore1 <= c.stockout_epsilon:
-                return ModeAMineSurging()
-
-        elif m == "MODE_B":
-            if ore1 <= c.stockout_epsilon:
-                return ModeBContingency()
-            if ore2 <= c.stockout_epsilon:
-                return ModeBMineSurging()
-
-        elif m == "MODE_A_CONTINGENCY":
-            if ore1 <= c.stockout_epsilon:
-                return ModeAMineSurging()
-
-        elif m == "MODE_B_CONTINGENCY":
-            if ore2 <= c.stockout_epsilon:
-                return ModeBMineSurging()
-
-        # 4. Exit Surging when the excess inventory is successfully burned off
-        elif m == "MODE_A_MINE_SURGING":
-            p = sensors.belief_routing_fraction
-            is_good_parcel = (1.0 - p) > 0 and (
-                c.mode_a_ore1_milling_rate / (1.0 - p)
-            ) < (c.mode_a_ore1_milling_rate + c.mode_a_ore2_milling_rate)
-            if total_stock <= c.target_ore_stock_level and is_good_parcel:
-                return ModeA()
-
-        elif m == "MODE_B_MINE_SURGING":
-            p = sensors.belief_routing_fraction
-            is_good_parcel = p > 0 and (c.mode_b_ore2_milling_rate / p) < (
-                c.mode_b_ore1_milling_rate + c.mode_b_ore2_milling_rate
-            )
-            if total_stock <= c.target_ore_stock_level and is_good_parcel:
-                return ModeB()
-
-        return None
 
 
 class CyanidationController(BaseBlendingController):
@@ -334,6 +240,19 @@ class CyanidationController(BaseBlendingController):
             "TimeInModeDMineSurging_Timer", initial_value=0.0
         )
 
+    _TIMER_MAP = {
+        **BaseBlendingController._TIMER_MAP,
+        "MODE_C": "time_mode_c",
+        "MODE_C_CONTINGENCY": "time_mode_c_contingency",
+        "MODE_C_MINE_SURGING": "time_mode_c_surging",
+        "MODE_D": "time_mode_d",
+        "MODE_D_CONTINGENCY": "time_mode_d_contingency",
+        "MODE_D_MINE_SURGING": "time_mode_d_surging",
+    }
+    _CONTINGENCY_MODES = BaseBlendingController._CONTINGENCY_MODES | {
+        "MODE_C_CONTINGENCY", "MODE_D_CONTINGENCY",
+    }
+
     def forward(self) -> OperatingMode:
         c = self.config
         mine = self.mine
@@ -354,189 +273,24 @@ class CyanidationController(BaseBlendingController):
 
         return super().forward()
 
-    def _update_timers(self, m: str):
-        super()._update_timers(m)
-        c = self.config
-        if m == "MODE_C":
-            self.time_mode_c.rate = 1.0
-            self.time_executed_campaign_shutdown.rate = 1.0
-            self.time_executed_campaign_shutdown.upper_threshold = (
-                c.duration_of_production_campaigns
-            )
-        elif m == "MODE_C_CONTINGENCY":
-            self.time_mode_c_contingency.rate = 1.0
-            self.time_executed_campaign_shutdown.rate = 1.0
-            self.time_executed_contingency.rate = 1.0
-            self.time_executed_campaign_shutdown.upper_threshold = (
-                c.duration_of_production_campaigns
-            )
-            self.time_executed_contingency.upper_threshold = (
-                c.duration_of_contingency_segments
-            )
-        elif m == "MODE_C_MINE_SURGING":
-            self.time_mode_c_surging.rate = 1.0
-            self.time_executed_campaign_shutdown.rate = 1.0
-            self.time_executed_campaign_shutdown.upper_threshold = (
-                c.duration_of_production_campaigns
-            )
-        elif m == "MODE_D":
-            self.time_mode_d.rate = 1.0
-            self.time_executed_campaign_shutdown.rate = 1.0
-            self.time_executed_campaign_shutdown.upper_threshold = (
-                c.duration_of_production_campaigns
-            )
-        elif m == "MODE_D_CONTINGENCY":
-            self.time_mode_d_contingency.rate = 1.0
-            self.time_executed_campaign_shutdown.rate = 1.0
-            self.time_executed_contingency.rate = 1.0
-            self.time_executed_campaign_shutdown.upper_threshold = (
-                c.duration_of_production_campaigns
-            )
-            self.time_executed_contingency.upper_threshold = (
-                c.duration_of_contingency_segments
-            )
-        elif m == "MODE_D_MINE_SURGING":
-            self.time_mode_d_surging.rate = 1.0
-            self.time_executed_campaign_shutdown.rate = 1.0
-            self.time_executed_campaign_shutdown.upper_threshold = (
-                c.duration_of_production_campaigns
-            )
-
-    def controller_decision(self):
-        c = self.config
-        sensors = self.sensors
-        m = self.current_mode.value.name
-
-        ore1 = sensors.belief_ore1_stock.value
+    def _choose_next_campaign_mode(self, sensors, config):
         ore2 = sensors.belief_ore2_stock.value
         total_stock = sensors.belief_ore_stock.value
-
-        # The paper dictates that when production requirements increase (Period 27+),
-        # the controller should evaluate switching to Configuration C or Configuration D.
-        # Let's use the config variables directly to dynamically calculate period length.
-        period_length = c.duration_of_production_campaigns + c.duration_of_shutdowns
-        stage_2_start_time = c.stage_2_start_period * period_length
+        period_length = config.duration_of_production_campaigns + config.duration_of_shutdowns
+        stage_2_start_time = config.stage_2_start_period * period_length
         is_stage_2 = self.parent.global_time.value >= stage_2_start_time
 
-        # 1. End of Campaign / Shutdown Check
-        if self.is_campaign_complete():
-            self.reset_campaign_timer()
-            if m == "SHUTDOWN":
-                # In Stage 1, logic mimics the baseline Modes A and B
-                if not is_stage_2:
-                    if ore2 > c.critical_ore2_level:
-                        return (
-                            ModeA()
-                            if total_stock <= c.target_ore_stock_level
-                            else ModeAMineSurging()
-                        )
-                    else:
-                        return (
-                            ModeB()
-                            if total_stock <= c.target_ore_stock_level
-                            else ModeBMineSurging()
-                        )
-                # In Stage 2, it evaluates Mode C vs Mode D
-                else:
-                    if ore2 > c.critical_ore2_level:
-                        return (
-                            ModeC()
-                            if total_stock <= c.target_ore_stock_level
-                            else ModeCMineSurging()
-                        )
-                    else:
-                        return (
-                            ModeD()
-                            if total_stock <= c.target_ore_stock_level
-                            else ModeDMineSurging()
-                        )
-            else:
-                return Shutdown()
-
-        # 2. End of Contingency Check
-        if m in (
-            "MODE_A_CONTINGENCY",
-            "MODE_B_CONTINGENCY",
-            "MODE_C_CONTINGENCY",
-            "MODE_D_CONTINGENCY",
-        ):
-            if self.is_contingency_complete():
-                self.reset_contingency_timer()
-                if m == "MODE_A_CONTINGENCY":
-                    return ModeA()
-                elif m == "MODE_B_CONTINGENCY":
-                    return ModeB()
-                elif m == "MODE_C_CONTINGENCY":
-                    return ModeC()
-                elif m == "MODE_D_CONTINGENCY":
-                    return ModeD()
-
-        # 3. Continuous Mid-Campaign Monitoring (Stockouts and Recoveries)
-        if m == "MODE_A":
-            if ore2 <= c.stockout_epsilon:
-                return ModeAContingency()
-            if ore1 <= c.stockout_epsilon:
-                return ModeAMineSurging()
-        elif m == "MODE_B":
-            if ore1 <= c.stockout_epsilon:
-                return ModeBContingency()
-            if ore2 <= c.stockout_epsilon:
-                return ModeBMineSurging()
-        elif m == "MODE_C":
-            if ore2 <= c.stockout_epsilon:
-                return ModeCContingency()
-            if ore1 <= c.stockout_epsilon:
-                return ModeCMineSurging()
-        elif m == "MODE_D":
-            if ore1 <= c.stockout_epsilon:
-                return ModeDContingency()
-            if ore2 <= c.stockout_epsilon:
-                return ModeDMineSurging()
-
-        elif m == "MODE_A_CONTINGENCY":
-            if ore1 <= c.stockout_epsilon:
-                return ModeAMineSurging()
-        elif m == "MODE_B_CONTINGENCY":
-            if ore2 <= c.stockout_epsilon:
-                return ModeBMineSurging()
-        elif m == "MODE_C_CONTINGENCY":
-            if ore1 <= c.stockout_epsilon:
-                return ModeCMineSurging()
-        elif m == "MODE_D_CONTINGENCY":
-            if ore2 <= c.stockout_epsilon:
-                return ModeDMineSurging()
-
-        # 4. Exit Surging when the excess inventory is successfully burned off
-        elif m == "MODE_A_MINE_SURGING":
-            p = sensors.belief_routing_fraction
-            is_good_parcel = (1.0 - p) > 0 and (
-                c.mode_a_ore1_milling_rate / (1.0 - p)
-            ) < (c.mode_a_ore1_milling_rate + c.mode_a_ore2_milling_rate)
-            if total_stock <= c.target_ore_stock_level and is_good_parcel:
-                return ModeA()
-
-        elif m == "MODE_B_MINE_SURGING":
-            p = sensors.belief_routing_fraction
-            is_good_parcel = p > 0 and (c.mode_b_ore2_milling_rate / p) < (
-                c.mode_b_ore1_milling_rate + c.mode_b_ore2_milling_rate
+        if not is_stage_2:
+            return super()._choose_next_campaign_mode(sensors, config)
+        if ore2 > config.critical_ore2_level:
+            return (
+                MODES["MODE_C"]
+                if total_stock <= config.target_ore_stock_level
+                else MODES["MODE_C_MINE_SURGING"]
             )
-            if total_stock <= c.target_ore_stock_level and is_good_parcel:
-                return ModeB()
-
-        elif m == "MODE_C_MINE_SURGING":
-            p = sensors.belief_routing_fraction
-            is_good_parcel = (1.0 - p) > 0 and (
-                c.mode_c_ore1_milling_rate / (1.0 - p)
-            ) < (c.mode_c_ore1_milling_rate + c.mode_c_ore2_milling_rate)
-            if total_stock <= c.target_ore_stock_level and is_good_parcel:
-                return ModeC()
-
-        elif m == "MODE_D_MINE_SURGING":
-            p = sensors.belief_routing_fraction
-            is_good_parcel = p > 0 and (c.mode_d_ore2_milling_rate / p) < (
-                c.mode_d_ore1_milling_rate + c.mode_d_ore2_milling_rate
+        else:
+            return (
+                MODES["MODE_D"]
+                if total_stock <= config.target_ore_stock_level
+                else MODES["MODE_D_MINE_SURGING"]
             )
-            if total_stock <= c.target_ore_stock_level and is_good_parcel:
-                return ModeD()
-
-        return None

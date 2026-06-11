@@ -3,13 +3,7 @@ from examples.mining.components.modes import RequireDecision
 from examples.mining.components.config import ConcentratorConfig
 from examples.mining.components.sensors import ConcentratorSensorNetwork
 from examples.mining.components.controllers import ConcentratorController
-from examples.mining.components.modes import (
-    ModeA,
-    ModeB,
-    ModeAMineSurging,
-    ModeBMineSurging,
-    Shutdown,
-)
+from examples.mining.components.modes import MODES
 
 class RL_MineController(ConcentratorController):
     """A modified controller that yields to the RL agent using RequireDecision."""
@@ -19,41 +13,32 @@ class RL_MineController(ConcentratorController):
         self.pending_rl_action = None  # Stores the action passed in by env.step()
 
     def controller_decision(self):
-        c = self.config
-        sensors = self.sensors
         m = self.current_mode.value.name
 
         if self.is_campaign_complete():
-            # --- RL INTERCEPT POINT ---
             if m == "SHUTDOWN":
                 if self.pending_rl_action is not None:
-                    # Apply the queued RL action
                     self.reset_campaign_timer()
-                    if self.pending_rl_action == 0:
-                        chosen_mode = ModeA()
-                    elif self.pending_rl_action == 1:
-                        chosen_mode = ModeB()
-                    elif self.pending_rl_action == 2:
-                        chosen_mode = ModeAMineSurging()
-                    elif self.pending_rl_action == 3:
-                        chosen_mode = ModeBMineSurging()
+                    action_map = [
+                        MODES["MODE_A"],
+                        MODES["MODE_B"],
+                        MODES["MODE_A_MINE_SURGING"],
+                        MODES["MODE_B_MINE_SURGING"],
+                    ]
+                    chosen = action_map[self.pending_rl_action]
                     self.pending_rl_action = None
-                    return chosen_mode
+                    return chosen
                 else:
-                    # Raise your existing flag to pause the DRSEngine
                     raise RequireDecision()
             else:
                 self.reset_campaign_timer()
-                return Shutdown()
+                return MODES["SHUTDOWN"]
 
-        # Automated physical preemptions remain untouched
-        if m in ("MODE_A_CONTINGENCY", "MODE_B_CONTINGENCY"):
-            if self.is_contingency_complete():
-                self.reset_contingency_timer()
-                return ModeA() if m == "MODE_A_CONTINGENCY" else ModeB()
+        if m.endswith("_CONTINGENCY") and self.is_contingency_complete():
+            self.reset_contingency_timer()
+            return MODES[m.replace("_CONTINGENCY", "")]
 
-        if m in ("MODE_A_MINE_SURGING", "MODE_B_MINE_SURGING"):
-            if sensors.belief_ore_stock.value <= c.target_ore_stock_level:
-                return ModeA() if m == "MODE_A_MINE_SURGING" else ModeB()
+        if m.endswith("_MINE_SURGING") and self.sensors.belief_ore_stock.value <= self.config.target_ore_stock_level:
+            return MODES[m.replace("_MINE_SURGING", "")]
 
         return None

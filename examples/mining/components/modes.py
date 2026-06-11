@@ -1,597 +1,148 @@
-from abc import ABC, abstractmethod
 from typing import Optional, Union
 from drs.module import drs
 from .data import TargetRates
 
-class RequireDecision(Exception):
-    """A signal flag and engine interrupt for when the simulation requires external control."""
 
+class RequireDecision(Exception):
     pass
 
 
-class OperatingMode(ABC):
+_MODE_IDS = {
+    "MODE_A": 0, "MODE_A_CONTINGENCY": 1, "MODE_A_MINE_SURGING": 2,
+    "MODE_B": 3, "MODE_B_CONTINGENCY": 4, "MODE_B_MINE_SURGING": 5,
+    "SHUTDOWN": 6,
+    "MODE_C": 7, "MODE_C_CONTINGENCY": 8, "MODE_C_MINE_SURGING": 9,
+    "MODE_D": 10, "MODE_D_CONTINGENCY": 11, "MODE_D_MINE_SURGING": 12,
+}
+
+
+_RATE_MAP = {
+    "MODE_A": ("mode_a_ore1_milling_rate", "mode_a_ore2_milling_rate"),
+    "MODE_A_CONTINGENCY": ("mode_a_contingency_ore1_milling_rate", None),
+    "MODE_A_MINE_SURGING": ("mode_a_ore1_milling_rate", "mode_a_ore2_milling_rate"),
+    "MODE_B": ("mode_b_ore1_milling_rate", "mode_b_ore2_milling_rate"),
+    "MODE_B_CONTINGENCY": (None, "mode_b_contingency_ore2_milling_rate"),
+    "MODE_B_MINE_SURGING": ("mode_b_ore1_milling_rate", "mode_b_ore2_milling_rate"),
+    "MODE_C": ("mode_c_ore1_milling_rate", "mode_c_ore2_milling_rate"),
+    "MODE_C_CONTINGENCY": ("mode_c_contingency_ore1_milling_rate", None),
+    "MODE_C_MINE_SURGING": ("mode_c_ore1_milling_rate", "mode_c_ore2_milling_rate"),
+    "MODE_D": ("mode_d_ore1_milling_rate", "mode_d_ore2_milling_rate"),
+    "MODE_D_CONTINGENCY": (None, "mode_d_contingency_ore2_milling_rate"),
+    "MODE_D_MINE_SURGING": ("mode_d_ore1_milling_rate", "mode_d_ore2_milling_rate"),
+    "SHUTDOWN": (None, None),
+}
+
+
+def _read_rates(name, config):
+    ore1_attr, ore2_attr = _RATE_MAP.get(name, (None, None))
+    ore1 = getattr(config, ore1_attr, 0.0) if ore1_attr else 0.0
+    ore2 = getattr(config, ore2_attr, 0.0) if ore2_attr else 0.0
+    return ore1, ore2
+
+
+class OperatingMode:
+    __slots__ = ("_name", "_id")
+
+    def __init__(self, name: str):
+        self._name = name
+        self._id = _MODE_IDS[name]
+
+    @property
+    def id(self):
+        return self._id
+
+    @property
+    def name(self):
+        return self._name
+
     def __eq__(self, other):
-        if not isinstance(other, OperatingMode):
-            return False
-        return self.id == other.id
+        if isinstance(other, OperatingMode):
+            return self._id == other._id
+        return NotImplemented
 
     def __hash__(self):
-        return hash(self.id)
+        return hash(self._id)
 
-    @property
-    @abstractmethod
-    def id(self) -> int:
-        """The discrete integer action for the Gym environment."""
-        pass
+    def __repr__(self):
+        return f"OperatingMode({self._name})"
 
-    @property
-    @abstractmethod
-    def name(self) -> str:
-        """String representation for plotting/telemetry."""
-        pass
-
-    @abstractmethod
-    def is_valid_start(self, model: drs.Module) -> bool:
-        """Do the conditions of our system allow for this mode to be entered?
-        Useful for Action Masking: Can the RL agent choose this mode right now?
-        """
-        pass
-
-    @abstractmethod
-    def check_end_conditions(
-        self, model: drs.Module
-    ) -> Union[Optional["OperatingMode"], RequireDecision]:
-        """Preemption: Does the current state force a transition to a different mode? Does it require a decision from a controller as to our next mode?"""
-        pass
-
-    @abstractmethod
-    def get_target_rates(self, model: drs.Module) -> TargetRates:
-        """Physics: Returns the target rates (TargetRates dataclass) for this specific mode."""
-        pass
-
-class ModeA(OperatingMode):
-    @property
-    def id(self):
-        return 0
-
-    @property
-    def name(self):
-        return "MODE_A"
-
-    def is_valid_start(self, model: drs.Module) -> bool:
-        plant = model.plant
-        sensors = model.sensors
-        return sensors.belief_ore2_stock.value >= plant.config.critical_ore2_level
-
-    def check_end_conditions(self, model: drs.Module):
-        plant = model.plant
-        controller = model.controller
-        sensors = model.sensors
-
-        if controller.is_campaign_complete():
-            return RequireDecision()
-
-        if sensors.belief_ore1_stock.value <= plant.config.stockout_epsilon:
-            return ModeAMineSurging()
-
-        if sensors.belief_ore2_stock.value <= plant.config.stockout_epsilon:
-            controller.reset_contingency_timer()
-            return ModeAContingency()
-
-        return None
-
-    def get_target_rates(self, model: drs.Module) -> TargetRates:
-        c = model.plant.config
-        milling_1 = c.mode_a_ore1_milling_rate
-        milling_2 = c.mode_a_ore2_milling_rate
-        
-        # Fleet provides exactly what gets used
-        return TargetRates(
-            extraction_rate=(milling_1 + milling_2), 
-            ore1_milling_rate=milling_1, 
-            ore2_milling_rate=milling_2
-        )
-
-
-class ModeAContingency(OperatingMode):
-    @property
-    def id(self):
-        return 1
-
-    @property
-    def name(self):
-        return "MODE_A_CONTINGENCY"
-
-    def is_valid_start(self, model: drs.Module) -> bool:
+    def is_valid_start(self, model) -> bool:
+        n = self._name
+        if n in ("MODE_A", "MODE_C"):
+            return model.sensors.belief_ore2_stock.value >= model.plant.config.critical_ore2_level
+        if n in ("MODE_B", "MODE_D"):
+            return model.sensors.belief_ore2_stock.value < model.plant.config.critical_ore2_level
         return True
 
-    def check_end_conditions(self, model: drs.Module):
-        plant = model.plant
-        controller = model.controller
-        sensors = model.sensors
+    def get_target_rates(self, model) -> TargetRates:
+        config = model.plant.config
+        ore1, ore2 = _read_rates(self._name, config)
 
-        if controller.is_campaign_complete():
+        if "_MINE_SURGING" in self._name:
+            p = model.sensors.belief_routing_fraction
+            if self._name in ("MODE_A_MINE_SURGING", "MODE_C_MINE_SURGING"):
+                extraction = (ore1 / (1.0 - p)) if (1.0 - p) > 0 else 0.0
+            else:
+                extraction = (ore2 / p) if p > 0 else 0.0
+            return TargetRates(extraction_rate=extraction, ore1_milling_rate=ore1, ore2_milling_rate=ore2)
+
+        return TargetRates(extraction_rate=ore1 + ore2, ore1_milling_rate=ore1, ore2_milling_rate=ore2)
+
+    def check_end_conditions(self, model) -> Union[Optional["OperatingMode"], RequireDecision]:
+        ctrl = model.controller
+        n = self._name
+
+        if ctrl.is_campaign_complete():
             return RequireDecision()
 
-        if controller.is_contingency_complete():
-            return RequireDecision()
+        if n == "SHUTDOWN":
+            return None
 
-        if sensors.belief_ore1_stock.value <= plant.config.stockout_epsilon:
-            return ModeAMineSurging()
+        sensors = ctrl.sensors
+        config = ctrl.config
+        ore1 = sensors.belief_ore1_stock.value
+        ore2 = sensors.belief_ore2_stock.value
+
+        if "_CONTINGENCY" in n:
+            if ctrl.is_contingency_complete():
+                return RequireDecision()
+            base = n.replace("_CONTINGENCY", "")
+            if base in ("MODE_A", "MODE_C") and ore1 <= config.stockout_epsilon:
+                return MODES[base + "_MINE_SURGING"]
+            if base in ("MODE_B", "MODE_D") and ore2 <= config.stockout_epsilon:
+                return MODES[base + "_MINE_SURGING"]
+            return None
+
+        if "_MINE_SURGING" in n:
+            base = n.replace("_MINE_SURGING", "")
+            if base == "MODE_C" and ore2 <= config.stockout_epsilon:
+                ctrl.reset_contingency_timer()
+                return MODES[base + "_CONTINGENCY"]
+            if base == "MODE_D" and ore1 <= config.stockout_epsilon:
+                ctrl.reset_contingency_timer()
+                return MODES[base + "_CONTINGENCY"]
+            sensors.belief_ore_stock.lower_threshold = config.target_ore_stock_level
+            if sensors.belief_ore_stock.value <= config.target_ore_stock_level + 1e-6:
+                return RequireDecision()
+            return None
+
+        if n in ("MODE_A", "MODE_C"):
+            if ore1 <= config.stockout_epsilon:
+                return MODES[n + "_MINE_SURGING"]
+            if ore2 <= config.stockout_epsilon:
+                ctrl.reset_contingency_timer()
+                return MODES[n + "_CONTINGENCY"]
+            return None
+
+        if n in ("MODE_B", "MODE_D"):
+            if ore1 <= config.stockout_epsilon:
+                ctrl.reset_contingency_timer()
+                return MODES[n + "_CONTINGENCY"]
+            if ore2 <= config.stockout_epsilon:
+                return MODES[n + "_MINE_SURGING"]
+            return None
 
         return None
 
-    def get_target_rates(self, model: drs.Module) -> TargetRates:
-        c = model.plant.config
-        r = c.mode_a_contingency_ore1_milling_rate
-        
-        # Fleet slows down to exactly match the throttled plant
-        return TargetRates(
-            extraction_rate=r, 
-            ore1_milling_rate=r, 
-            ore2_milling_rate=0.0
-        )
 
-
-class ModeAMineSurging(OperatingMode):
-    @property
-    def id(self):
-        return 2
-
-    @property
-    def name(self):
-        return "MODE_A_MINE_SURGING"
-
-    def is_valid_start(self, model: drs.Module) -> bool:
-        return True
-
-    def check_end_conditions(self, model: drs.Module):
-        plant = model.plant
-        controller = model.controller
-        sensors = model.sensors
-
-        if controller.is_campaign_complete():
-            return RequireDecision()
-
-        # Set threshold to tell engine exactly when to stop time!
-        sensors.belief_ore_stock.lower_threshold = plant.config.target_ore_stock_level
-
-        # End Surging only when the excess inventory is successfully burned off
-        if sensors.belief_ore_stock.value <= plant.config.target_ore_stock_level + 1e-6:
-            return RequireDecision()
-
-        return None
-
-    def get_target_rates(self, model: drs.Module) -> TargetRates:
-        c = model.plant.config
-        milling_1 = c.mode_a_ore1_milling_rate
-        milling_2 = c.mode_a_ore2_milling_rate
-        
-        p = model.sensors.belief_routing_fraction
-        # Mine extracts EXACTLY enough total rock to yield the required Ore 1
-        extraction = (milling_1 / (1.0 - p)) if (1.0 - p) > 0 else 0.0
-        
-        return TargetRates(
-            extraction_rate=extraction,
-            ore1_milling_rate=milling_1,
-            ore2_milling_rate=milling_2,
-        )
-
-
-class ModeB(OperatingMode):
-    @property
-    def id(self):
-        return 3
-
-    @property
-    def name(self):
-        return "MODE_B"
-
-    def is_valid_start(self, model: drs.Module) -> bool:
-        plant = model.plant
-        sensors = model.sensors
-        return sensors.belief_ore2_stock.value < plant.config.critical_ore2_level
-
-    def check_end_conditions(self, model: drs.Module):
-        plant = model.plant
-        controller = model.controller
-        sensors = model.sensors
-
-        if controller.is_campaign_complete():
-            return RequireDecision()
-
-        if sensors.belief_ore1_stock.value <= plant.config.stockout_epsilon:
-            controller.reset_contingency_timer()
-            return ModeBContingency()
-
-        if sensors.belief_ore2_stock.value <= plant.config.stockout_epsilon:
-            return ModeBMineSurging()
-
-        return None
-
-    def get_target_rates(self, model: drs.Module) -> TargetRates:
-        c = model.plant.config
-        milling_1 = c.mode_b_ore1_milling_rate
-        milling_2 = c.mode_b_ore2_milling_rate
-        
-        # Fleet provides exactly what gets used
-        return TargetRates(
-            extraction_rate=(milling_1 + milling_2), 
-            ore1_milling_rate=milling_1, 
-            ore2_milling_rate=milling_2
-        )
-
-
-class ModeBContingency(OperatingMode):
-    @property
-    def id(self):
-        return 4
-
-    @property
-    def name(self):
-        return "MODE_B_CONTINGENCY"
-
-    def is_valid_start(self, model: drs.Module) -> bool:
-        return True
-
-    def check_end_conditions(self, model: drs.Module):
-        plant = model.plant
-        controller = model.controller
-        sensors = model.sensors
-
-        if controller.is_campaign_complete():
-            return RequireDecision()
-
-        if controller.is_contingency_complete():
-            return RequireDecision()
-
-        if sensors.belief_ore2_stock.value <= plant.config.stockout_epsilon:
-            return ModeBMineSurging()
-
-        return None
-
-    def get_target_rates(self, model: drs.Module) -> TargetRates:
-        c = model.plant.config
-        r = c.mode_b_contingency_ore2_milling_rate
-        
-        # Fleet slows down to exactly match the throttled plant
-        return TargetRates(
-            extraction_rate=r, 
-            ore1_milling_rate=0.0, 
-            ore2_milling_rate=r
-        )
-
-
-class ModeBMineSurging(OperatingMode):
-    @property
-    def id(self):
-        return 5
-
-    @property
-    def name(self):
-        return "MODE_B_MINE_SURGING"
-
-    def is_valid_start(self, model: drs.Module) -> bool:
-        return True
-
-    def check_end_conditions(self, model: drs.Module):
-        plant = model.plant
-        controller = model.controller
-        sensors = model.sensors
-
-        if controller.is_campaign_complete():
-            return RequireDecision()
-
-        # Set threshold to tell engine exactly when to stop time!
-        sensors.belief_ore_stock.lower_threshold = plant.config.target_ore_stock_level
-
-        # End Surging only when the excess inventory is successfully burned off
-        if sensors.belief_ore_stock.value <= plant.config.target_ore_stock_level + 1e-6:
-            return RequireDecision()
-
-        return None
-
-    def get_target_rates(self, model: drs.Module) -> TargetRates:
-        c = model.plant.config
-        milling_1 = c.mode_b_ore1_milling_rate
-        milling_2 = c.mode_b_ore2_milling_rate
-        
-        p = model.sensors.belief_routing_fraction
-        # Mine extracts EXACTLY enough total rock to yield the required Ore 2
-        extraction = (milling_2 / p) if p > 0 else 0.0
-        
-        return TargetRates(
-            extraction_rate=extraction,
-            ore1_milling_rate=milling_1,
-            ore2_milling_rate=milling_2,
-        )
-
-
-class Shutdown(OperatingMode):
-    @property
-    def id(self):
-        return 6
-
-    @property
-    def name(self):
-        return "SHUTDOWN"
-
-    def is_valid_start(self, model: drs.Module) -> bool:
-        return True
-
-    def check_end_conditions(self, model: drs.Module):
-        controller = model.controller
-        if controller.is_campaign_complete():
-            return RequireDecision()
-        return None
-
-    def get_target_rates(self, model: drs.Module) -> TargetRates:
-        return TargetRates(
-            extraction_rate=0.0, ore1_milling_rate=0.0, ore2_milling_rate=0.0
-        )
-
-
-class ModeC(OperatingMode):
-    @property
-    def id(self):
-        return 7
-
-    @property
-    def name(self):
-        return "MODE_C"
-
-    def is_valid_start(self, model: drs.Module) -> bool:
-        plant = model.plant
-        sensors = model.sensors
-        return sensors.belief_ore2_stock.value >= plant.config.critical_ore2_level
-
-    def check_end_conditions(self, model: drs.Module):
-        plant = model.plant
-        controller = model.controller
-        sensors = model.sensors
-
-        if controller.is_campaign_complete():
-            return RequireDecision()
-
-        if sensors.belief_ore1_stock.value <= plant.config.stockout_epsilon:
-            return ModeCMineSurging()
-
-        if sensors.belief_ore2_stock.value <= plant.config.stockout_epsilon:
-            controller.reset_contingency_timer()
-            return ModeCContingency()
-
-        return None
-
-    def get_target_rates(self, model: drs.Module) -> TargetRates:
-        c = model.plant.config
-        milling_1 = c.mode_c_ore1_milling_rate
-        milling_2 = c.mode_c_ore2_milling_rate
-        
-        # Fleet provides exactly what gets used
-        return TargetRates(
-            extraction_rate=(milling_1 + milling_2), 
-            ore1_milling_rate=milling_1, 
-            ore2_milling_rate=milling_2
-        )
-
-
-class ModeCContingency(OperatingMode):
-    @property
-    def id(self):
-        return 8
-
-    @property
-    def name(self):
-        return "MODE_C_CONTINGENCY"
-
-    def is_valid_start(self, model: drs.Module) -> bool:
-        return True
-
-    def check_end_conditions(self, model: drs.Module):
-        plant = model.plant
-        controller = model.controller
-        sensors = model.sensors
-
-        if controller.is_campaign_complete():
-            return RequireDecision()
-
-        if controller.is_contingency_complete():
-            return RequireDecision()
-
-        if sensors.belief_ore1_stock.value <= plant.config.stockout_epsilon:
-            return ModeCMineSurging()
-
-        return None
-
-    def get_target_rates(self, model: drs.Module) -> TargetRates:
-        c = model.plant.config
-        r = c.mode_c_contingency_ore1_milling_rate
-        
-        # Fleet slows down to exactly match the throttled plant
-        return TargetRates(
-            extraction_rate=r, 
-            ore1_milling_rate=r, 
-            ore2_milling_rate=0.0
-        )
-
-
-class ModeCMineSurging(OperatingMode):
-    @property
-    def id(self):
-        return 9
-
-    @property
-    def name(self):
-        return "MODE_C_MINE_SURGING"
-
-    def is_valid_start(self, model: drs.Module) -> bool:
-        return True
-
-    def check_end_conditions(self, model: drs.Module):
-        plant = model.plant
-        controller = model.controller
-        sensors = model.sensors
-
-        if controller.is_campaign_complete():
-            return RequireDecision()
-
-        if sensors.belief_ore2_stock.value <= plant.config.stockout_epsilon:
-            controller.reset_contingency_timer()
-            return ModeCContingency()
-
-        # Set threshold to tell engine exactly when to stop time!
-        sensors.belief_ore_stock.lower_threshold = plant.config.target_ore_stock_level
-
-        # End Surging only when the excess inventory is successfully burned off
-        if sensors.belief_ore_stock.value <= plant.config.target_ore_stock_level + 1e-6:
-            return RequireDecision()
-
-        return None
-
-    def get_target_rates(self, model: drs.Module) -> TargetRates:
-        c = model.plant.config
-        milling_1 = c.mode_c_ore1_milling_rate
-        milling_2 = c.mode_c_ore2_milling_rate
-        
-        p = model.sensors.belief_routing_fraction
-        # Mine extracts EXACTLY enough total rock to yield the required Ore 1
-        extraction = (milling_1 / (1.0 - p)) if (1.0 - p) > 0 else 0.0
-        
-        return TargetRates(
-            extraction_rate=extraction,
-            ore1_milling_rate=milling_1,
-            ore2_milling_rate=milling_2,
-        )
-
-
-class ModeD(OperatingMode):
-    @property
-    def id(self):
-        return 10
-
-    @property
-    def name(self):
-        return "MODE_D"
-
-    def is_valid_start(self, model: drs.Module) -> bool:
-        plant = model.plant
-        sensors = model.sensors
-        return sensors.belief_ore2_stock.value < plant.config.critical_ore2_level
-
-    def check_end_conditions(self, model: drs.Module):
-        plant = model.plant
-        controller = model.controller
-        sensors = model.sensors
-
-        if controller.is_campaign_complete():
-            return RequireDecision()
-
-        if sensors.belief_ore1_stock.value <= plant.config.stockout_epsilon:
-            controller.reset_contingency_timer()
-            return ModeDContingency()
-
-        if sensors.belief_ore2_stock.value <= plant.config.stockout_epsilon:
-            return ModeDMineSurging()
-
-        return None
-
-    def get_target_rates(self, model: drs.Module) -> TargetRates:
-        c = model.plant.config
-        milling_1 = c.mode_d_ore1_milling_rate
-        milling_2 = c.mode_d_ore2_milling_rate
-        
-        # Fleet provides exactly what gets used
-        return TargetRates(
-            extraction_rate=(milling_1 + milling_2), 
-            ore1_milling_rate=milling_1, 
-            ore2_milling_rate=milling_2
-        )
-
-
-class ModeDContingency(OperatingMode):
-    @property
-    def id(self):
-        return 11
-
-    @property
-    def name(self):
-        return "MODE_D_CONTINGENCY"
-
-    def is_valid_start(self, model: drs.Module) -> bool:
-        return True
-
-    def check_end_conditions(self, model: drs.Module):
-        plant = model.plant
-        controller = model.controller
-        sensors = model.sensors
-
-        if controller.is_campaign_complete():
-            return RequireDecision()
-
-        if controller.is_contingency_complete():
-            return RequireDecision()
-
-        if sensors.belief_ore2_stock.value <= plant.config.stockout_epsilon:
-            return ModeDMineSurging()
-
-        return None
-
-    def get_target_rates(self, model: drs.Module) -> TargetRates:
-        c = model.plant.config
-        r = c.mode_d_contingency_ore2_milling_rate
-        
-        # Fleet slows down to exactly match the throttled plant
-        return TargetRates(
-            extraction_rate=r, 
-            ore1_milling_rate=0.0, 
-            ore2_milling_rate=r
-        )
-
-
-class ModeDMineSurging(OperatingMode):
-    @property
-    def id(self):
-        return 12
-
-    @property
-    def name(self):
-        return "MODE_D_MINE_SURGING"
-
-    def is_valid_start(self, model: drs.Module) -> bool:
-        return True
-
-    def check_end_conditions(self, model: drs.Module):
-        plant = model.plant
-        controller = model.controller
-        sensors = model.sensors
-
-        if controller.is_campaign_complete():
-            return RequireDecision()
-
-        if sensors.belief_ore1_stock.value <= plant.config.stockout_epsilon:
-            controller.reset_contingency_timer()
-            return ModeDContingency()
-
-        # Set threshold to tell engine exactly when to stop time!
-        sensors.belief_ore_stock.lower_threshold = plant.config.target_ore_stock_level
-
-        # End Surging only when the excess inventory is successfully burned off
-        if sensors.belief_ore_stock.value <= plant.config.target_ore_stock_level + 1e-6:
-            return RequireDecision()
-
-        return None
-
-    def get_target_rates(self, model: drs.Module) -> TargetRates:
-        c = model.plant.config
-        milling_1 = c.mode_d_ore1_milling_rate
-        milling_2 = c.mode_d_ore2_milling_rate
-        
-        p = model.sensors.belief_routing_fraction
-        # Mine extracts EXACTLY enough total rock to yield the required Ore 2
-        extraction = (milling_2 / p) if p > 0 else 0.0
-        
-        return TargetRates(
-            extraction_rate=extraction,
-            ore1_milling_rate=milling_1,
-            ore2_milling_rate=milling_2,
-        )
+MODES = {name: OperatingMode(name) for name in _MODE_IDS}

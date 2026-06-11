@@ -1,5 +1,4 @@
-from typing import List, Dict, Optional
-from drs.data import Flow
+from typing import List, Dict, Optional, Tuple
 from drs.module import drs
 
 
@@ -28,31 +27,26 @@ class Stockpile(drs.Module):
         safe_mass = max(1e-6, self.mass.value)
         return level.value / safe_mass
 
-    def forward(self, inflow: Flow, requested_outflow_rate: float) -> Flow:
-        """Process inflow, apply conservation, and return actual achievable outflow."""
-        # Prevent deadlock: clamp outflow if stockpile is empty
+    def forward(self, inflow_rate: float, inflow_attributes: dict, requested_outflow_rate: float) -> Tuple[float, dict]:
+        """Process inflow, apply conservation, and return (actual_outflow_rate, outflow_attributes)."""
         actual_outflow = requested_outflow_rate
         if self.mass.value <= 1e-6:
-            actual_outflow = min(actual_outflow, inflow.rate)
+            actual_outflow = min(actual_outflow, inflow_rate)
 
-        outflow = Flow(
-            rate=actual_outflow,
-            attributes={
-                attr: actual_outflow * self.current_concentration(attr)
-                for attr in self.expected_attributes
-            },
-        )
+        outflow_attributes = {
+            attr: actual_outflow * self.current_concentration(attr)
+            for attr in self.expected_attributes
+        }
 
-        self.mass.rate = inflow.rate - outflow.rate
+        self.mass.rate = inflow_rate - actual_outflow
         for attr in self.expected_attributes:
             level = getattr(self, attr)
-            level.rate = inflow.attributes.get(attr, 0.0) - outflow.attributes.get(attr, 0.0)
+            level.rate = inflow_attributes.get(attr, 0.0) - outflow_attributes.get(attr, 0.0)
 
-        # CRITICAL FIX: Tell the engine to calculate a dt to stop exactly at 0.0
         if self.mass.rate < 0:
             self.mass.lower_threshold = 0.0
             for attr in self.expected_attributes:
                 level = getattr(self, attr)
                 level.lower_threshold = 0.0
 
-        return outflow
+        return (actual_outflow, outflow_attributes)

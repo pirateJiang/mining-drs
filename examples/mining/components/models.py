@@ -102,8 +102,8 @@ class BaseBlendingModel(drs.Module):
         requested_2 = targets.ore2_milling_rate
 
         # 2. Physics & Flow
-        actual_flow1 = self.plant.true_ore1_stock(flow1, requested_1)
-        actual_flow2 = self.plant.true_ore2_stock(flow2, requested_2)
+        actual_flow1 = self.plant.true_ore1_stock(*flow1, requested_1)
+        actual_flow2 = self.plant.true_ore2_stock(*flow2, requested_2)
         self.plant(actual_flow1, actual_flow2, current_mode)
 
         # 3. Observation (Sensors record the newly calculated rates)

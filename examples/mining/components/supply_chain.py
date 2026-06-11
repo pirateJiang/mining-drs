@@ -1,5 +1,4 @@
 from drs.module import drs
-from drs.data import Flow
 from .generators import BaseOreGenerator
 from .modes import OperatingMode
 from .config import ConcentratorConfig, CyanidationConfig
@@ -71,11 +70,11 @@ class ConcentratorMineFace(BaseMineFace):
         except StopIteration:
             pass
 
-    def forward(self, mode: OperatingMode) -> Flow:
+    def forward(self, mode: OperatingMode) -> tuple:
         super().forward(mode)
         r = self.true_ore_extraction.rate
         grade = self.true_current_parcel_grade.value
-        return Flow(rate=r, attributes={"grade": r * grade})
+        return (r, {"grade": r * grade})
 
 
 class CyanidationMineFace(BaseMineFace):
@@ -94,11 +93,11 @@ class CyanidationMineFace(BaseMineFace):
         except StopIteration:
             pass
 
-    def forward(self, mode: OperatingMode) -> Flow:
+    def forward(self, mode: OperatingMode) -> tuple:
         super().forward(mode)
         r = self.true_ore_extraction.rate
         cyanide = self.true_current_parcel_cyanide.value
-        return Flow(rate=r, attributes={"cyanide": r * cyanide})
+        return (r, {"cyanide": r * cyanide})
 
 
 # ---------------------------------------------------------
@@ -120,13 +119,13 @@ class BaseFleetLogistics(drs.Module):
             "Subclasses must define how routing fraction is calculated."
         )
 
-    def forward(self, mine_flow: Flow, mode: OperatingMode) -> tuple[Flow, Flow]:
-        """Split mine flow between Ore 1 and Ore 2 stockpiles."""
+    def forward(self, mine_flow: tuple, mode: OperatingMode) -> tuple:
+        """Split mine flow between Ore 1 and Ore 2 stockpiles. Returns ((rate1, attrs1), (rate2, attrs2))."""
         self.fraction_to_ore2 = self.calculate_routing_fraction()
-        return (
-            mine_flow * (1.0 - self.fraction_to_ore2),
-            mine_flow * self.fraction_to_ore2,
-        )
+        rate, attrs = mine_flow
+        f1 = (rate * (1.0 - self.fraction_to_ore2), {k: v * (1.0 - self.fraction_to_ore2) for k, v in attrs.items()})
+        f2 = (rate * self.fraction_to_ore2, {k: v * self.fraction_to_ore2 for k, v in attrs.items()})
+        return (f1, f2)
 
 
 class ConcentratorFleet(BaseFleetLogistics):
@@ -175,14 +174,15 @@ class BaseMetallurgicalPlant(drs.Module):
         self.true_ore2_stock = None
 
     def forward(
-        self, actual_ore1_flow: Flow, actual_ore2_flow: Flow, mode: OperatingMode
+        self, actual_ore1_flow: tuple, actual_ore2_flow: tuple, mode: OperatingMode
     ):
-        self.true_total_ore_milled.rate = actual_ore1_flow.rate + actual_ore2_flow.rate
+        ore1_rate, _ = actual_ore1_flow
+        ore2_rate, _ = actual_ore2_flow
+        self.true_total_ore_milled.rate = ore1_rate + ore2_rate
         self.true_ore_stock.rate = (
             self.true_ore1_stock.mass.rate + self.true_ore2_stock.mass.rate
         )
 
-        # CRITICAL FIX: Tell the engine to calculate a dt to stop exactly at 0.0
         if self.true_ore_stock.rate < 0:
             self.true_ore_stock.lower_threshold = 0.0
 
@@ -215,7 +215,7 @@ class ConcentratorPlant(BaseMetallurgicalPlant):
         )
 
     def forward(
-        self, actual_ore1_flow: Flow, actual_ore2_flow: Flow, mode: OperatingMode
+        self, actual_ore1_flow: tuple, actual_ore2_flow: tuple, mode: OperatingMode
     ):
         super().forward(actual_ore1_flow, actual_ore2_flow, mode)
 
@@ -252,7 +252,7 @@ class CyanidationPlant(BaseMetallurgicalPlant):
         self.true_current_mill_kpt = drs.Variable("true_current_mill_kpt", 0.0)
 
     def forward(
-        self, actual_ore1_flow: Flow, actual_ore2_flow: Flow, mode: OperatingMode
+        self, actual_ore1_flow: tuple, actual_ore2_flow: tuple, mode: OperatingMode
     ):
         if (
             abs(
@@ -266,7 +266,9 @@ class CyanidationPlant(BaseMetallurgicalPlant):
 
         out1, out2 = super().forward(actual_ore1_flow, actual_ore2_flow, mode)
 
-        cyanide_consumed = out1.attributes.get("cyanide", 0.0) + out2.attributes.get(
+        _, ore1_attrs = out1
+        _, ore2_attrs = out2
+        cyanide_consumed = ore1_attrs.get("cyanide", 0.0) + ore2_attrs.get(
             "cyanide", 0.0
         )
         self.true_total_cyanide_consumed.rate = cyanide_consumed

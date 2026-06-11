@@ -22,6 +22,12 @@ class Expression:
         l_val = get_val(self.left)
         r_val = get_val(self.right)
 
+        if self.op == "neg":
+            return -l_val
+        if self.op == "pos":
+            return +l_val
+        if self.op == "abs":
+            return abs(l_val)
         if self.op == "add":
             return l_val + r_val
         if self.op == "sub":
@@ -78,6 +84,10 @@ class Expression:
             f"Use `.value` for immediate evaluation or `drs.Where()` for symbolic branching."
         )
 
+    def __neg__(self): return Expression("neg", self, None)
+    def __pos__(self): return Expression("pos", self, None)
+    def __abs__(self): return Expression("abs", self, None)
+
     def __add__(self, other): return Expression("add", self, other)
     def __sub__(self, other): return Expression("sub", self, other)
     def __mul__(self, other): return Expression("mul", self, other)
@@ -128,6 +138,20 @@ class Variable:
             )
         self._value = val
 
+    @property
+    def rate(self):
+        raise AttributeError(
+            f"'{type(self).__name__}' has no attribute 'rate'. "
+            f"Only drs.Level supports .rate. Use drs.Level() for quantities that flow."
+        )
+
+    @rate.setter
+    def rate(self, val):
+        raise AttributeError(
+            f"Cannot set .rate on '{type(self).__name__}'. "
+            f"Only drs.Level supports .rate."
+        )
+
     def get_sources(self) -> list:
         return [self]
 
@@ -155,6 +179,9 @@ class Variable:
         return NotImplemented
 
     def _rop(self, op: str, other):
+        self._record_read_dependency()
+        if isinstance(other, Variable):
+            other._record_read_dependency()
         if ExecutionContext.is_tracing():
             return Expression(op, other, self)
         l_val = other._sim_value() if isinstance(other, Variable) else other
@@ -164,6 +191,24 @@ class Variable:
         if op == "mul": return l_val * r_val
         if op == "div": return l_val / r_val if r_val != 0 else 0.0
         return NotImplemented
+
+    def __neg__(self):
+        self._record_read_dependency()
+        if ExecutionContext.is_tracing():
+            return Expression("neg", self, None)
+        return -self._sim_value()
+
+    def __pos__(self):
+        self._record_read_dependency()
+        if ExecutionContext.is_tracing():
+            return Expression("pos", self, None)
+        return +self._sim_value()
+
+    def __abs__(self):
+        self._record_read_dependency()
+        if ExecutionContext.is_tracing():
+            return Expression("abs", self, None)
+        return abs(self._sim_value())
 
     def __add__(self, other): return self._op("add", other)
     def __sub__(self, other): return self._op("sub", other)

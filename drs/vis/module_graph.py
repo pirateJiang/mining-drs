@@ -4,42 +4,6 @@ import matplotlib.patches as mpatches
 import networkx as nx
 
 
-def _infer_type(module) -> str:
-    name = type(module).__name__.lower()
-    if "mineface" in name or "mine" in name:
-        return "mine"
-    if "fleet" in name:
-        return "fleet"
-    if "plant" in name:
-        return "plant"
-    if "stockpile" in name:
-        return "stockpile"
-    if "controller" in name:
-        return "controller"
-    if "sensor" in name or "network" in name:
-        return "sensor"
-    if "generator" in name or "source" in name or "loader" in name or "data" in name:
-        return "generator"
-    if "model" in name:
-        return "model"
-    return "other"
-
-
-_TYPE_COLORS = {
-    "mine": "#D4A574",
-    "fleet": "#5B9BD5",
-    "plant": "#70AD47",
-    "stockpile": "#ED7D31",
-    "controller": "#FF6B6B",
-    "sensor": "#9B59B6",
-    "generator": "#00BCD4",
-    "model": "#555555",
-    "other": "#BDC3C7",
-}
-
-_TYPE_ORDER = ["model", "generator", "mine", "fleet", "plant", "stockpile", "controller", "sensor", "other"]
-
-
 def plot_module_graph(model, show_vars=False, figsize=(14, 10), save_path=None):
     G = nx.DiGraph()
     module_paths = {}
@@ -63,7 +27,9 @@ def plot_module_graph(model, show_vars=False, figsize=(14, 10), save_path=None):
                     src_id = spath if spath else type(smod).__name__
                     rdr_id = rpath if rpath else type(rmod).__name__
                     if src_id != rdr_id and src_id in G and rdr_id in G:
-                        G.add_edge(src_id, rdr_id, var_name=dep_var.name, edge_type="read")
+                        G.add_edge(
+                            src_id, rdr_id, var_name=dep_var.name, edge_type="read"
+                        )
                     break
 
     for rpath, rmod in model.named_modules():
@@ -88,8 +54,7 @@ def plot_module_graph(model, show_vars=False, figsize=(14, 10), save_path=None):
     labels = {}
     for node_id in G.nodes():
         mod = G.nodes[node_id].get("module")
-        t = _infer_type(mod) if mod else "other"
-        node_colors.append(_TYPE_COLORS.get(t, "#BDC3C7"))
+        node_colors.append("#BDC3C7")
 
         path = G.nodes[node_id].get("path", "")
         short_name = path.split(".")[-1] if path else type(mod).__name__
@@ -107,11 +72,17 @@ def plot_module_graph(model, show_vars=False, figsize=(14, 10), save_path=None):
         var_count = len(mod._variables) if mod is not None else 0
         node_sizes.append(max(800, 600 + var_count * 40))
 
-    dep_edges = [(u, v) for u, v, d in G.edges(data=True) if d.get("edge_type") == "read"]
-    flow_edges = [(u, v) for u, v, d in G.edges(data=True) if d.get("edge_type") == "flow"]
+    dep_edges = [
+        (u, v) for u, v, d in G.edges(data=True) if d.get("edge_type") == "read"
+    ]
+    flow_edges = [
+        (u, v) for u, v, d in G.edges(data=True) if d.get("edge_type") == "flow"
+    ]
 
     nx.draw_networkx_edges(
-        G, pos, ax=ax,
+        G,
+        pos,
+        ax=ax,
         edgelist=dep_edges,
         edge_color="#E74C3C",
         style="dashed",
@@ -124,7 +95,9 @@ def plot_module_graph(model, show_vars=False, figsize=(14, 10), save_path=None):
 
     if flow_edges:
         nx.draw_networkx_edges(
-            G, pos, ax=ax,
+            G,
+            pos,
+            ax=ax,
             edgelist=flow_edges,
             edge_color="#3498DB",
             style="solid",
@@ -136,7 +109,9 @@ def plot_module_graph(model, show_vars=False, figsize=(14, 10), save_path=None):
         )
 
     nx.draw_networkx_nodes(
-        G, pos, ax=ax,
+        G,
+        pos,
+        ax=ax,
         node_color=node_colors,
         node_size=node_sizes,
         edgecolors="#333333",
@@ -145,28 +120,24 @@ def plot_module_graph(model, show_vars=False, figsize=(14, 10), save_path=None):
     )
 
     nx.draw_networkx_labels(
-        G, pos, ax=ax,
+        G,
+        pos,
+        ax=ax,
         labels=labels,
         font_size=8,
         font_weight="bold",
     )
 
-    legend_patches = []
-    for t in _TYPE_ORDER:
-        if t == "other" and not any(_infer_type(G.nodes[n].get("module")) == "other" for n in G.nodes()):
-            continue
-        color = _TYPE_COLORS[t]
-        label = t.capitalize() if t != "other" else "Other"
-        legend_patches.append(mpatches.Patch(color=color, label=label, alpha=0.9))
+    legend_patches = [mpatches.Patch(color="#BDC3C7", label="Module", alpha=0.9)]
 
     if dep_edges:
-        legend_patches.append(mpatches.Patch(
-            color="#E74C3C", label="Dependency (read)", alpha=0.6
-        ))
+        legend_patches.append(
+            mpatches.Patch(color="#E74C3C", label="Dependency (read)", alpha=0.6)
+        )
     if flow_edges:
-        legend_patches.append(mpatches.Patch(
-            color="#3498DB", label="Data flow (transient)", alpha=0.8
-        ))
+        legend_patches.append(
+            mpatches.Patch(color="#3498DB", label="Data flow (transient)", alpha=0.8)
+        )
 
     ax.legend(handles=legend_patches, loc="upper left", fontsize=9, framealpha=0.9)
 
@@ -215,14 +186,11 @@ def _tree_layout(G, parent_of, module_paths):
 
 
 def _node_id(path):
-    return ("root" if not path else path.replace(".", "_"))
+    return "root" if not path else path.replace(".", "_")
 
 
-def _node_label(path, mod, show_type=True):
-    short = path.split(".")[-1] if path else type(mod).__name__
-    if show_type:
-        return f"{short} ({_infer_type(mod)})"
-    return short
+def _node_label(path, mod):
+    return path.split(".")[-1] if path else type(mod).__name__
 
 
 def _generate_mermaid(model) -> str:
@@ -262,8 +230,7 @@ def _generate_mermaid(model) -> str:
                 _render_children(child_id, depth + 1)
                 lines.append(f"{prefix}end")
             else:
-                t = _infer_type(mod)
-                lines.append(f'{prefix}{nid}(["{label}"]):::{t}')
+                lines.append(f'{prefix}{nid}(["{label}"])')
 
     _render_children(0)
 
@@ -304,32 +271,7 @@ def _generate_mermaid(model) -> str:
                 seen_edges.add(edge_key)
                 lines.append(f"    {src_id} ==>|flow| {rdr_id}")
 
-    mods_by_type = {}
-    for path, mod in model.named_modules():
-        t = _infer_type(mod)
-        mods_by_type.setdefault(t, []).append((path, mod))
 
-    if "generator" in mods_by_type and "mine" in mods_by_type:
-        g_path = mods_by_type["generator"][0][0]
-        m_path = mods_by_type["mine"][0][0]
-        g_id = _node_id(g_path)
-        m_id = _node_id(m_path)
-        lines.append(f"    {g_id} -.->|data| {m_id}")
-
-    if "fleet" in mods_by_type:
-        f_path = mods_by_type["fleet"][0][0]
-        f_id = _node_id(f_path)
-        for spath, _ in mods_by_type.get("stockpile", []):
-            s_id = _node_id(spath)
-            edge_key = (f_id, s_id, "routing")
-            if edge_key not in seen_edges:
-                seen_edges.add(edge_key)
-                lines.append(f"    {f_id} -.->|routing| {s_id}")
-
-    for t in _TYPE_ORDER:
-        if t in mods_by_type:
-            c = _TYPE_COLORS.get(t, "#BDC3C7")
-            lines.insert(1, f"    classDef {t} fill:{c},stroke:#333,color:#111")
 
     return "\n".join(lines)
 
@@ -350,7 +292,9 @@ def save_module_graph_report(model, path_prefix="module_graph", show_vars=True):
                     src_name = spath if spath else type(smod).__name__
                     rdr_name = rpath if rpath else type(rmod).__name__
                     if src_name != rdr_name:
-                        dep_lines.append(f"  - `{src_name}` → `{rdr_name}` reads `{dep_var.name}`")
+                        dep_lines.append(
+                            f"  - `{src_name}` → `{rdr_name}` reads `{dep_var.name}`"
+                        )
                     break
         for src_mod in rmod._flow_dependencies:
             for spath, smod in model.named_modules():
@@ -364,12 +308,13 @@ def save_module_graph_report(model, path_prefix="module_graph", show_vars=True):
     module_list = []
     for path, mod in model.named_modules():
         short = path.split(".")[-1] if path else type(mod).__name__
-        t = _infer_type(mod)
         v = list(mod._variables.keys())[:5]
         v_str = ", ".join(v) if v else "—"
         if len(mod._variables) > 5:
             v_str += f", +{len(mod._variables) - 5} more"
-        module_list.append(f"| `{short}` | `{path if path else '(root)'}` | {t} | `{v_str}` |")
+        module_list.append(
+            f"| `{short}` | `{path if path else '(root)'}` | `{v_str}` |"
+        )
 
     mermaid_code = _generate_mermaid(model)
 
@@ -397,8 +342,8 @@ The following transient flow-edges were recorded during the simulation. An arrow
 
 ## Module Hierarchy
 
-| Name | Path | Type | Variables |
-|------|------|------|-----------|
+| Name | Path | Variables |
+|------|------|-----------|
 {chr(10).join(module_list)}
 
 ## Flowchart

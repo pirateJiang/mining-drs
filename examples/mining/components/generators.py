@@ -2,6 +2,7 @@ import random
 import numpy as np
 import gstools as gs
 from drs.module import drs
+from drs.flow import Flow
 from .config import ConcentratorConfig, CyanidationConfig
 
 
@@ -14,6 +15,9 @@ class StochasticFaciesGradeGenerator(drs.DataSource):
         self.next_is_new_facies = True
         self.current_grade = config.mean_grade
         self.first_call = True
+
+    def forward(self):
+        return Flow(value=next(self))
 
     def __next__(self) -> drs.DataPoint:
         c = self.config
@@ -40,6 +44,9 @@ class StochasticFaciesGradeGenerator(drs.DataSource):
 
 class CyanideGeostatisticalBlockGenerator(drs.DataSource):
     """Generates equiprobable 2D spatial block models using Sequential Gaussian Simulation."""
+
+    def forward(self):
+        return Flow(value=next(self))
 
     def __init__(self, config: CyanidationConfig):
         super().__init__()

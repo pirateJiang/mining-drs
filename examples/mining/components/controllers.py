@@ -65,6 +65,10 @@ class BaseBlendingController(drs.Module):
         )
         self.time_shutdown = drs.Timer("TimeInShutdown_Level", initial_value=0.0)
 
+        self.target_extraction_rate = drs.Variable("target_extraction_rate", 0.0)
+        self.target_ore1_mill_rate = drs.Variable("target_ore1_mill_rate", 0.0)
+        self.target_ore2_mill_rate = drs.Variable("target_ore2_mill_rate", 0.0)
+
     def is_campaign_complete(self) -> bool:
         c = self.config
         m = self.current_mode.value.name
@@ -123,7 +127,10 @@ class BaseBlendingController(drs.Module):
 
         self._update_timers(self.current_mode.value.name)
 
-        return Flow(value=self.current_mode.value)
+        targets = self.current_mode.value.get_target_rates(self.parent)
+        self.target_extraction_rate.value = targets.extraction_rate
+        self.target_ore1_mill_rate.value = targets.ore1_milling_rate
+        self.target_ore2_mill_rate.value = targets.ore2_milling_rate
 
     def _update_timers(self, m: str):
         c = self.config

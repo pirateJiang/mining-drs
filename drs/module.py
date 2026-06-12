@@ -35,8 +35,29 @@ class Module:
                     ExecutionContext.record_flow_edge(v._source, self)
                     self._record_flow_edge(v._source)
 
-            clean_kwargs = {k: v for k, v in kwargs.items() if not isinstance(v, Flow)}
-            result = self.forward(*args, **clean_kwargs)
+            result = self.forward(*args, **kwargs)
+
+            if isinstance(result, tuple):
+                for res in result:
+                    if not isinstance(res, Flow):
+                        raise RuntimeError(
+                            f"Tuple returned from '{type(self).__name__}.forward()' "
+                            f"must contain only drs.Flow objects."
+                        )
+                    res._source = self
+                return result
+
+            if isinstance(self, DataSource):
+                if result is None:
+                    raise RuntimeError(
+                        f"'{type(self).__name__}.forward()' must return drs.Flow. "
+                        f"DataSource subclasses cannot return None."
+                    )
+                if not isinstance(result, Flow):
+                    raise RuntimeError(
+                        f"'{type(self).__name__}.forward()' returned "
+                        f"'{type(result).__name__}', not drs.Flow."
+                    )
 
             if result is not None and not isinstance(result, Flow):
                 raise RuntimeError(

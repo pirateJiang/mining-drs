@@ -70,31 +70,13 @@ class BaseBlendingModel(drs.Module):
     def forward(self):
         self.global_time.rate = 1.0
 
-        # 1. Logic & Commands
-        mode_flow = self.controller()
-        ore_flow = self.mine(mode_flow)
-        fraction_flow = self.fleet()
+        self.controller()
 
-        current_mode = mode_flow.value
+        mine_flow = self.mine()
+        ore1_flow, ore2_flow = self.fleet(mine_flow)
 
-        # 2. Physics & Flow
-        r = self.mine.true_ore_extraction.rate
-        f = self.fleet.fraction_to_ore2.value
-        attr_value = self._get_mine_attr_value()
-
-        targets = current_mode.get_target_rates(self)
-        requested_1 = targets.ore1_milling_rate
-        requested_2 = targets.ore2_milling_rate
-
-        s1, s2 = self.true_ore1_stock, self.true_ore2_stock
-        s1.mass.rate = r * (1.0 - f)
-        s2.mass.rate = r * f
-        for attr in s1.expected_attributes:
-            getattr(s1, attr).rate = r * (1.0 - f) * attr_value
-            getattr(s2, attr).rate = r * f * attr_value
-
-        out1 = s1(requested_1, _inflow=ore_flow, _routing=fraction_flow)
-        out2 = s2(requested_2, _inflow=ore_flow, _routing=fraction_flow)
+        out1 = self.true_ore1_stock(self.controller.target_ore1_mill_rate.value, inflow=ore1_flow)
+        out2 = self.true_ore2_stock(self.controller.target_ore2_mill_rate.value, inflow=ore2_flow)
 
         self.plant(out1, out2)
 
@@ -157,7 +139,7 @@ class ConcentratorModel(BaseBlendingModel):
 
         self.generator = StochasticFaciesGradeGenerator(self.config)
         self.mine = ConcentratorMineFace(self.config, self.generator)
-        self.fleet = ConcentratorFleet(self.config, self.mine)
+        self.fleet = ConcentratorFleet(self.config)
 
         initial_fraction = self.config.mean_grade / self.config.grade_percentage_scale
         initial_mass1 = (1 - initial_fraction) * self.config.target_ore_stock_level
@@ -175,14 +157,10 @@ class ConcentratorModel(BaseBlendingModel):
             initial_attributes={"grade": initial_mass2 * self.config.mean_grade},
         )
 
-        self.plant = ConcentratorPlant(self.config, self.fleet, self.true_ore1_stock, self.true_ore2_stock)
+        self.plant = ConcentratorPlant(self.config, self.mine, self.fleet, self.true_ore1_stock, self.true_ore2_stock)
         self.controller = ConcentratorController(self.config, self.mine, self.fleet, self.plant)
 
         self.setup_telemetry()
-
-    def _get_mine_attr_value(self) -> float:
-        return self.mine.true_current_parcel_grade.value
-
 
 class CyanidationModel(BaseBlendingModel):
     def __init__(self, config: CyanidationConfig, enable_telemetry: bool = False):
@@ -190,7 +168,7 @@ class CyanidationModel(BaseBlendingModel):
 
         self.generator = CyanideGeostatisticalBlockGenerator(self.config)
         self.mine = CyanidationMineFace(self.config, self.generator)
-        self.fleet = CyanidationFleet(self.config, self.mine)
+        self.fleet = CyanidationFleet(self.config)
 
         initial_ore2_fraction = 0.70
         initial_mass1 = (1 - initial_ore2_fraction) * self.config.target_ore_stock_level
@@ -212,10 +190,9 @@ class CyanidationModel(BaseBlendingModel):
             },
         )
 
-        self.plant = CyanidationPlant(self.config, self.fleet, self.true_ore1_stock, self.true_ore2_stock)
+        self.plant = CyanidationPlant(self.config, self.mine, self.fleet, self.true_ore1_stock, self.true_ore2_stock)
         self.controller = CyanidationController(self.config, self.mine, self.fleet, self.plant)
 
         self.setup_telemetry()
 
-    def _get_mine_attr_value(self) -> float:
-        return self.mine.true_current_parcel_cyanide.value
+

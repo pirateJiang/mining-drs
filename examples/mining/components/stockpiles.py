@@ -29,11 +29,17 @@ class Stockpile(drs.Module):
             return 0.0
         return level.value / max(1e-6, self.mass.value)
 
-    def forward(self, requested_outflow_rate: float) -> "Flow":
-        inflow = self.mass.rate
+    def forward(self, requested_outflow_rate: float, inflow=None) -> "Flow":
+        if inflow is not None:
+            material = inflow.value
+            self.mass.rate = material.extraction_rate
+            for attr in self.expected_attributes:
+                getattr(self, attr).rate = material.extraction_rate * material.attr_value
+
+        current_inflow = self.mass.rate
         actual_outflow = requested_outflow_rate
         if self.mass.value <= 1e-6:
-            actual_outflow = min(actual_outflow, inflow)
+            actual_outflow = min(actual_outflow, current_inflow)
 
         for attr in self.expected_attributes:
             level = getattr(self, attr)

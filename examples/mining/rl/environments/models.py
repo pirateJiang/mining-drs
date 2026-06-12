@@ -11,7 +11,6 @@ class RL_ConcentratorModel(ConcentratorModel):
         # Replace standard controller with RL Controller
         self.controller = RL_MineController(
             self.config,
-            self.sensors,
             self.mine,
             self.fleet,
             self.plant,

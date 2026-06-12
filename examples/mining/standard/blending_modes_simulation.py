@@ -143,6 +143,9 @@ if __name__ == "__main__":
     engine.run(max_time=config.replication_length)
     sim.print_statistics()
 
+    from drs.vis.module_graph import save_module_graph_report
+    save_module_graph_report(sim, path_prefix="Concentrator_Module_Graph")
+
     df = sim.telemetry.to_dataframe()
 
     # --- Mode Transition Log ---

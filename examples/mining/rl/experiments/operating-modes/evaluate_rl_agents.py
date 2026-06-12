@@ -541,6 +541,9 @@ def generate_rl_dashboard(
     sim = env.sim
     sim.print_statistics()
 
+    from drs.vis.module_graph import save_module_graph_report
+    save_module_graph_report(sim, path_prefix=f"{model_name}_Module_Graph")
+
     df = sim.telemetry.to_dataframe()
 
     # --- Mode Transition Log ---

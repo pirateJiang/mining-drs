@@ -40,12 +40,8 @@ class DRSEngine:
             if max_time is not None and self.current_time >= max_time:
                 break
 
-            try:
-                ExecutionContext.push(self.model)
-                self.model.zero_rates()
-                self.model()
-            finally:
-                ExecutionContext.pop()
+            self.model.zero_rates()
+            self.model()
 
             self.model._run_post_step_hooks(self.current_time)
 

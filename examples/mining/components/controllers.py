@@ -1,10 +1,6 @@
 from drs.module import drs
+from drs.flow import Flow
 from .modes import OperatingMode, RequireDecision
-from .sensors import (
-    BaseSensorNetwork,
-    ConcentratorSensorNetwork,
-    CyanidationSensorNetwork,
-)
 from .config import ConcentratorConfig, CyanidationConfig
 from .supply_chain import (
     BaseMineFace,
@@ -21,11 +17,6 @@ from .modes import MODES
 
 
 class BaseBlendingController(drs.Module):
-    """
-    Abstract base controller handling shared DRS timers and state transitions
-    for dual-stockpile surging operations.
-    """
-
     _TIMER_MAP = {
         "MODE_A": "time_mode_a",
         "MODE_A_CONTINGENCY": "time_mode_a_contingency",
@@ -40,21 +31,18 @@ class BaseBlendingController(drs.Module):
     def __init__(
         self,
         config,
-        sensors: BaseSensorNetwork,
         mine: BaseMineFace,
         fleet: BaseFleetLogistics,
         plant: BaseMetallurgicalPlant,
     ):
         super().__init__()
         self.config = config
-        self.sensors = sensors
         self.mine = mine
         self.fleet = fleet
         self.plant = plant
 
         self.current_mode = drs.Variable("current_mode", MODES["MODE_A"])
 
-        # Initial Timer Values
         self.time_executed_campaign_shutdown = drs.Timer(
             "TimeExecutedInCurrentCampaignOrShutdown_Timer", initial_value=0.0
         )
@@ -86,7 +74,6 @@ class BaseBlendingController(drs.Module):
             else c.duration_of_production_campaigns
         )
 
-        # CRITICAL FIX: Tell the engine exactly when to stop time!
         self.time_executed_campaign_shutdown.upper_threshold = threshold
 
         return self.time_executed_campaign_shutdown.value >= (threshold - 1e-6)
@@ -95,7 +82,6 @@ class BaseBlendingController(drs.Module):
         c = self.config
         threshold = c.duration_of_contingency_segments
 
-        # CRITICAL FIX: Tell the engine exactly when to stop time!
         self.time_executed_contingency.upper_threshold = threshold
 
         return self.time_executed_contingency.value >= (threshold - 1e-6)
@@ -106,14 +92,10 @@ class BaseBlendingController(drs.Module):
     def reset_contingency_timer(self):
         self.time_executed_contingency.reset()
 
-    def forward(self) -> OperatingMode:
-        # Silently read the sensor to draw the computational graph edge
-        _ = self.sensors.belief_ore_stock.value
-
+    def forward(self) -> Flow:
         c = self.config
         mine = self.mine
 
-        # Global warmup reset
         if (
             abs(
                 mine.true_ore_extraction.value
@@ -129,7 +111,6 @@ class BaseBlendingController(drs.Module):
             self.time_mode_b_surging.reset()
             self.time_shutdown.reset()
 
-        # Mode-specific transitions
         next_mode = self.current_mode.value.check_end_conditions(self.parent)
 
         if isinstance(next_mode, RequireDecision):
@@ -142,7 +123,7 @@ class BaseBlendingController(drs.Module):
 
         self._update_timers(self.current_mode.value.name)
 
-        return self.current_mode.value
+        return Flow(value=self.current_mode.value)
 
     def _update_timers(self, m: str):
         c = self.config
@@ -157,9 +138,9 @@ class BaseBlendingController(drs.Module):
             self.time_executed_contingency.rate = 1.0
             self.time_executed_contingency.upper_threshold = c.duration_of_contingency_segments
 
-    def _choose_next_campaign_mode(self, sensors, config):
-        ore2 = sensors.belief_ore2_stock.value
-        total_stock = sensors.belief_ore_stock.value
+    def _choose_next_campaign_mode(self, config):
+        ore2 = self.parent.true_ore2_stock.mass.value
+        total_stock = self.plant.true_ore_stock.value
         if ore2 > config.critical_ore2_level:
             return (
                 MODES["MODE_A"]
@@ -175,13 +156,12 @@ class BaseBlendingController(drs.Module):
 
     def controller_decision(self):
         c = self.config
-        sensors = self.sensors
         m = self.current_mode.value.name
 
         if self.is_campaign_complete():
             self.reset_campaign_timer()
             if m == "SHUTDOWN":
-                return self._choose_next_campaign_mode(sensors, c)
+                return self._choose_next_campaign_mode(c)
             return MODES["SHUTDOWN"]
 
         if m.endswith("_CONTINGENCY"):
@@ -191,40 +171,26 @@ class BaseBlendingController(drs.Module):
 
 
 class ConcentratorController(BaseBlendingController):
-    """
-    Standard decision logic for the Base-Metal Concentrator.
-    Loops infinitely between Modes A and B based on critical Ore 2 levels.
-    """
-
     def __init__(
         self,
         config: ConcentratorConfig,
-        sensors: ConcentratorSensorNetwork,
         mine: ConcentratorMineFace,
         fleet: ConcentratorFleet,
         plant: ConcentratorPlant,
     ):
-        super().__init__(config, sensors, mine, fleet, plant)
+        super().__init__(config, mine, fleet, plant)
 
 
 class CyanidationController(BaseBlendingController):
-    """
-    Decision logic for the Au-Ag Cyanidation Plant.
-    Currently identical to Concentrator logic, but structured to support
-    the transition to Stage 2 (Modes C & D) halfway through the mine life.
-    """
-
     def __init__(
         self,
         config: CyanidationConfig,
-        sensors: CyanidationSensorNetwork,
         mine: CyanidationMineFace,
         fleet: CyanidationFleet,
         plant: CyanidationPlant,
     ):
-        super().__init__(config, sensors, mine, fleet, plant)
+        super().__init__(config, mine, fleet, plant)
 
-        # Stage 2 Timers (Specific to Cyanidation)
         self.time_mode_c = drs.Timer("TimeInModeC_Timer", initial_value=0.0)
         self.time_mode_c_contingency = drs.Timer(
             "TimeInModeCContingency_Timer", initial_value=0.0
@@ -253,7 +219,7 @@ class CyanidationController(BaseBlendingController):
         "MODE_C_CONTINGENCY", "MODE_D_CONTINGENCY",
     }
 
-    def forward(self) -> OperatingMode:
+    def forward(self) -> Flow:
         c = self.config
         mine = self.mine
 
@@ -273,15 +239,15 @@ class CyanidationController(BaseBlendingController):
 
         return super().forward()
 
-    def _choose_next_campaign_mode(self, sensors, config):
-        ore2 = sensors.belief_ore2_stock.value
-        total_stock = sensors.belief_ore_stock.value
+    def _choose_next_campaign_mode(self, config):
+        ore2 = self.parent.true_ore2_stock.mass.value
+        total_stock = self.plant.true_ore_stock.value
         period_length = config.duration_of_production_campaigns + config.duration_of_shutdowns
         stage_2_start_time = config.stage_2_start_period * period_length
         is_stage_2 = self.parent.global_time.value >= stage_2_start_time
 
         if not is_stage_2:
-            return super()._choose_next_campaign_mode(sensors, config)
+            return super()._choose_next_campaign_mode(config)
         if ore2 > config.critical_ore2_level:
             return (
                 MODES["MODE_C"]

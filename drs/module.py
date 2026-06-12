@@ -3,6 +3,7 @@ from typing import Iterator
 from .variables import Variable, Level, Timer
 from .execution_context import ExecutionContext
 from .data_source import DataPoint
+from .flow import Flow
 
 
 class Module:
@@ -18,12 +19,36 @@ class Module:
         self._post_step_hooks = []
         self._dependencies = []
         self._dep_seen = set()
+        self._flow_dependencies = []
+        self._flow_dep_seen = set()
 
     def __call__(self, *args, **kwargs):
         previous = ExecutionContext.get_current()
         ExecutionContext.push(self)
         try:
-            return self.forward(*args, **kwargs)
+            for arg in args:
+                if isinstance(arg, Flow) and arg._source is not None:
+                    ExecutionContext.record_flow_edge(arg._source, self)
+                    self._record_flow_edge(arg._source)
+            for v in kwargs.values():
+                if isinstance(v, Flow) and v._source is not None:
+                    ExecutionContext.record_flow_edge(v._source, self)
+                    self._record_flow_edge(v._source)
+
+            clean_kwargs = {k: v for k, v in kwargs.items() if not isinstance(v, Flow)}
+            result = self.forward(*args, **clean_kwargs)
+
+            if result is not None and not isinstance(result, Flow):
+                raise RuntimeError(
+                    f"'{type(self).__name__}.forward()' returned "
+                    f"'{type(result).__name__}', not a drs.Flow. "
+                    f"Inter-module communication must use drs.Flow."
+                )
+
+            if isinstance(result, Flow):
+                result._source = self
+
+            return result
         finally:
             ExecutionContext.pop()
 
@@ -66,6 +91,14 @@ class Module:
             if key not in self._dep_seen:
                 self._dep_seen.add(key)
                 self._dependencies.append((variable._owner, variable))
+
+    def _record_flow_edge(self, source_module):
+        """Record that this module received a Flow from source_module."""
+        if source_module is not None and source_module is not self:
+            key = id(source_module)
+            if key not in self._flow_dep_seen:
+                self._flow_dep_seen.add(key)
+                self._flow_dependencies.append(source_module)
 
     def variables(self) -> Iterator[Variable]:
         """Recursively yield all variables without duplicates."""
@@ -133,6 +166,8 @@ class Module:
         """Reset the recorded dependency graph."""
         self._dependencies.clear()
         self._dep_seen.clear()
+        self._flow_dependencies.clear()
+        self._flow_dep_seen.clear()
 
     def get_dependency_graph(self) -> list:
         """Return all recorded read dependencies from this module and all sub-modules
@@ -185,3 +220,4 @@ class drs:
     Timer = Timer
     DataPoint = DataPoint
     DataSource = DataSource
+    Flow = Flow

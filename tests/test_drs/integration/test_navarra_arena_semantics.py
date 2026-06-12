@@ -15,9 +15,9 @@ from examples.mining.components.config import ConcentratorConfig
 
 def test_contingency_timer_resets_when_entering_mode_a_contingency():
     sim = ConcentratorModel(ConcentratorConfig())
+    sim.true_ore2_stock.mass.value = 0.0
     sim.controller.current_mode.value = MODES["MODE_A"]
     sim.controller.time_executed_contingency.value = 0.75
-    sim.sensors.belief_ore2_stock.value = 0.0
 
     result = sim.controller.forward()
 
@@ -27,9 +27,9 @@ def test_contingency_timer_resets_when_entering_mode_a_contingency():
 
 def test_contingency_timer_resets_when_entering_mode_b_contingency():
     sim = ConcentratorModel(ConcentratorConfig())
+    sim.true_ore1_stock.mass.value = 0.0
     sim.controller.current_mode.value = MODES["MODE_B"]
     sim.controller.time_executed_contingency.value = 0.75
-    sim.sensors.belief_ore1_stock.value = 0.0
 
     result = sim.controller.forward()
 
@@ -54,14 +54,14 @@ def test_contingency_timer_resets_when_leaving_contingency():
 def test_mine_surging_arms_component_ore_lower_bounds():
     sim = ConcentratorModel(ConcentratorConfig())
 
-    sim.sensors.belief_ore_stock.value = sim.config.target_ore_stock_level * 1.1
+    sim.plant.true_ore_stock.value = sim.config.target_ore_stock_level * 1.1
 
     sim.controller.current_mode.value = MODES["MODE_A_MINE_SURGING"]
     sim.controller.forward()
 
-    assert sim.sensors.belief_ore_stock.lower_threshold == sim.config.target_ore_stock_level
+    assert sim.plant.true_ore_stock.lower_threshold == sim.config.target_ore_stock_level
 
     sim.controller.current_mode.value = MODES["MODE_B_MINE_SURGING"]
     sim.controller.forward()
 
-    assert sim.sensors.belief_ore_stock.lower_threshold == sim.config.target_ore_stock_level
+    assert sim.plant.true_ore_stock.lower_threshold == sim.config.target_ore_stock_level

@@ -2,13 +2,11 @@ from drs.module import drs
 from drs.telemetry import Telemetry
 
 from .config import BaseDualStockpileConfig, ConcentratorConfig, CyanidationConfig
+from .stockpiles import Stockpile
 from .supply_chain import (
     BaseMineFace, BaseFleetLogistics, BaseMetallurgicalPlant,
     ConcentratorMineFace, ConcentratorFleet, ConcentratorPlant,
     CyanidationMineFace, CyanidationFleet, CyanidationPlant
-)
-from .sensors import (
-    BaseSensorNetwork, ConcentratorSensorNetwork, CyanidationSensorNetwork
 )
 from .controllers import (
     BaseBlendingController,
@@ -22,29 +20,20 @@ from .generators import (
 
 
 class BaseBlendingModel(drs.Module):
-    """
-    Abstract base model that wires together a Generator, Plant, and Controller.
-    Handles global simulation updates, transitions, and telemetry.
-    """
-
     def __init__(self, config: BaseDualStockpileConfig, enable_telemetry: bool = False):
         super().__init__()
         self.config = config
         self.enable_telemetry = enable_telemetry
 
-        # These must be instantiated by subclasses!
         self.generator = None
         self.mine: BaseMineFace = None
         self.fleet: BaseFleetLogistics = None
         self.plant: BaseMetallurgicalPlant = None
-        self.sensors: BaseSensorNetwork = None
         self.controller: BaseBlendingController = None
-        
-        # Track global simulation time
+
         self.global_time = drs.Timer("GlobalTime_Timer", initial_value=0.0)
 
     def setup_telemetry(self):
-        """Called by subclasses after components are instantiated."""
         if self.enable_telemetry:
             self.telemetry = Telemetry(self)
             self.register_post_step_hook(self.telemetry.snapshot)
@@ -53,10 +42,9 @@ class BaseBlendingModel(drs.Module):
                 "MassOfCurrentParcel_State",
                 lambda t, m, s, h: m.mine.true_current_parcel_mass.value,
             )
-            # Use the universal routing fraction instead of hardcoding 'grade' or 'cyanide'
             self.telemetry.register_metric(
                 "CurrentParcelRoutingFraction_State",
-                lambda t, m, s, h: m.sensors.belief_routing_fraction,
+                lambda t, m, s, h: m.fleet.fraction_to_ore2.value,
             )
             self.telemetry.register_metric(
                 "Campaign_Shutdown_Timer",
@@ -66,40 +54,30 @@ class BaseBlendingModel(drs.Module):
                 "Contingency_Timer",
                 lambda t, m, s, h: m.controller.time_executed_contingency.value,
             )
-            
-            # Add dynamic tracking for stockpile attributes
-            if hasattr(self.sensors, "belief_ore1_grade"):
+
+            if hasattr(self.plant, "true_current_mill_kpt"):
                 self.telemetry.register_metric(
-                    "Belief_Ore1_Grade_State",
-                    lambda t, m, s, h: m.sensors.belief_ore1_grade.value,
-                )
-                self.telemetry.register_metric(
-                    "Belief_Ore2_Grade_State",
-                    lambda t, m, s, h: m.sensors.belief_ore2_grade.value,
-                )
-            
-            if hasattr(self.sensors, "belief_ore1_cyanide"):
-                self.telemetry.register_metric(
-                    "Belief_Ore1_Cyanide_State",
-                    lambda t, m, s, h: m.sensors.belief_ore1_cyanide.value,
-                )
-                self.telemetry.register_metric(
-                    "Belief_Ore2_Cyanide_State",
-                    lambda t, m, s, h: m.sensors.belief_ore2_cyanide.value,
+                    "CurrentMillKPT_State",
+                    lambda t, m, s, h: m.plant.true_current_mill_kpt.value,
                 )
 
-    def _get_mine_attr_value(self) -> float:
-        raise NotImplementedError("Subclasses must define which attribute the mine exposes.")
+            if hasattr(self.plant, "true_total_cyanide_consumed"):
+                self.telemetry.register_metric(
+                    "TotalCyanideConsumed_Level",
+                    lambda t, m, s, h: m.plant.true_total_cyanide_consumed.value,
+                )
 
     def forward(self):
         self.global_time.rate = 1.0
 
-        # 1. Logic & Commands (Reads state from previous tick)
-        current_mode = self.controller()
-        self.mine(current_mode)
-        self.fleet()
+        # 1. Logic & Commands
+        mode_flow = self.controller()
+        ore_flow = self.mine(mode_flow)
+        fraction_flow = self.fleet()
 
-        # 2. Physics & Flow — mine & fleet state drives stockpile inflow rates
+        current_mode = mode_flow.value
+
+        # 2. Physics & Flow
         r = self.mine.true_ore_extraction.rate
         f = self.fleet.fraction_to_ore2.value
         attr_value = self._get_mine_attr_value()
@@ -108,27 +86,20 @@ class BaseBlendingModel(drs.Module):
         requested_1 = targets.ore1_milling_rate
         requested_2 = targets.ore2_milling_rate
 
-        s1, s2 = self.plant.true_ore1_stock, self.plant.true_ore2_stock
+        s1, s2 = self.true_ore1_stock, self.true_ore2_stock
         s1.mass.rate = r * (1.0 - f)
         s2.mass.rate = r * f
         for attr in s1.expected_attributes:
             getattr(s1, attr).rate = r * (1.0 - f) * attr_value
             getattr(s2, attr).rate = r * f * attr_value
 
-        s1(requested_1)
-        s2(requested_2)
+        out1 = s1(requested_1, _inflow=ore_flow, _routing=fraction_flow)
+        out2 = s2(requested_2, _inflow=ore_flow, _routing=fraction_flow)
 
-        # 3. Plant reads stockpile outflows
-        self.plant()
-
-        # 4. Observation (Sensors record the newly calculated rates)
-        self.sensors()
+        self.plant(out1, out2)
 
     def is_terminating_condition_met(self) -> bool:
-        # Terminate when the mine has extracted all its ore reserves
         return self.mine.true_ore_extraction.value >= self.config.total_ore_to_extract
-
-
 
     def print_statistics(self):
         print("\n--- Output Statistics ---")
@@ -181,20 +152,31 @@ class BaseBlendingModel(drs.Module):
 
 
 class ConcentratorModel(BaseBlendingModel):
-    """
-    Assembles the 2019 Navarra Concentrator simulation using statistical grade generation.
-    """
-
     def __init__(self, config: ConcentratorConfig, enable_telemetry: bool = False):
         super().__init__(config, enable_telemetry)
 
-        # Assemble specific components
         self.generator = StochasticFaciesGradeGenerator(self.config)
         self.mine = ConcentratorMineFace(self.config, self.generator)
         self.fleet = ConcentratorFleet(self.config, self.mine)
-        self.plant = ConcentratorPlant(self.config, self.fleet)
-        self.sensors = ConcentratorSensorNetwork(self.config, self.mine, self.fleet, self.plant)
-        self.controller = ConcentratorController(self.config, self.sensors, self.mine, self.fleet, self.plant)
+
+        initial_fraction = self.config.mean_grade / self.config.grade_percentage_scale
+        initial_mass1 = (1 - initial_fraction) * self.config.target_ore_stock_level
+        self.true_ore1_stock = Stockpile(
+            name="TrueOre1Stock",
+            expected_attributes=["grade"],
+            initial_mass=initial_mass1,
+            initial_attributes={"grade": initial_mass1 * self.config.mean_grade},
+        )
+        initial_mass2 = initial_fraction * self.config.target_ore_stock_level
+        self.true_ore2_stock = Stockpile(
+            name="TrueOre2Stock",
+            expected_attributes=["grade"],
+            initial_mass=initial_mass2,
+            initial_attributes={"grade": initial_mass2 * self.config.mean_grade},
+        )
+
+        self.plant = ConcentratorPlant(self.config, self.fleet, self.true_ore1_stock, self.true_ore2_stock)
+        self.controller = ConcentratorController(self.config, self.mine, self.fleet, self.plant)
 
         self.setup_telemetry()
 
@@ -203,20 +185,35 @@ class ConcentratorModel(BaseBlendingModel):
 
 
 class CyanidationModel(BaseBlendingModel):
-    """
-    Assembles the 2026/2023 Órdenes Cyanidation simulation using SGS block modeling.
-    """
-
     def __init__(self, config: CyanidationConfig, enable_telemetry: bool = False):
         super().__init__(config, enable_telemetry)
 
-        # Assemble specific components
         self.generator = CyanideGeostatisticalBlockGenerator(self.config)
         self.mine = CyanidationMineFace(self.config, self.generator)
         self.fleet = CyanidationFleet(self.config, self.mine)
-        self.plant = CyanidationPlant(self.config, self.fleet)
-        self.sensors = CyanidationSensorNetwork(self.config, self.mine, self.fleet, self.plant)
-        self.controller = CyanidationController(self.config, self.sensors, self.mine, self.fleet, self.plant)
+
+        initial_ore2_fraction = 0.70
+        initial_mass1 = (1 - initial_ore2_fraction) * self.config.target_ore_stock_level
+        self.true_ore1_stock = Stockpile(
+            name="TrueOre1Stock",
+            expected_attributes=["cyanide"],
+            initial_mass=initial_mass1,
+            initial_attributes={
+                "cyanide": initial_mass1 * self.config.mean_cyanide_consumption
+            },
+        )
+        initial_mass2 = initial_ore2_fraction * self.config.target_ore_stock_level
+        self.true_ore2_stock = Stockpile(
+            name="TrueOre2Stock",
+            expected_attributes=["cyanide"],
+            initial_mass=initial_mass2,
+            initial_attributes={
+                "cyanide": initial_mass2 * self.config.mean_cyanide_consumption
+            },
+        )
+
+        self.plant = CyanidationPlant(self.config, self.fleet, self.true_ore1_stock, self.true_ore2_stock)
+        self.controller = CyanidationController(self.config, self.mine, self.fleet, self.plant)
 
         self.setup_telemetry()
 

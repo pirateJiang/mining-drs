@@ -1,4 +1,5 @@
 from drs.module import drs
+from drs.flow import Flow
 from .modes import OperatingMode
 from .config import ConcentratorConfig, CyanidationConfig
 
@@ -25,7 +26,10 @@ class BaseMineFace(drs.Module):
     def _load_next_batch(self):
         raise NotImplementedError("Subclasses must define how to parse the DataPoint.")
 
-    def forward(self, mode: OperatingMode):
+    def forward(self, mode):
+        if isinstance(mode, Flow):
+            mode = mode.value
+
         if (
             self.true_ore_extracted_from_current_parcel.value
             >= self.true_current_parcel_mass.value - 1e-6
@@ -54,6 +58,8 @@ class BaseMineFace(drs.Module):
         self.true_ore_extraction.rate = targets.extraction_rate
         self.true_ore_extracted_from_current_parcel.rate = targets.extraction_rate
 
+        return Flow(value=self.true_ore_extraction.rate)
+
 
 class ConcentratorMineFace(BaseMineFace):
     def __init__(self, config: ConcentratorConfig, loader: drs.DataSource):
@@ -69,8 +75,8 @@ class ConcentratorMineFace(BaseMineFace):
         except StopIteration:
             pass
 
-    def forward(self, mode: OperatingMode):
-        super().forward(mode)
+    def forward(self, mode):
+        return super().forward(mode)
 
 
 class CyanidationMineFace(BaseMineFace):
@@ -89,8 +95,8 @@ class CyanidationMineFace(BaseMineFace):
         except StopIteration:
             pass
 
-    def forward(self, mode: OperatingMode):
-        super().forward(mode)
+    def forward(self, mode):
+        return super().forward(mode)
 
 
 # ---------------------------------------------------------
@@ -114,6 +120,7 @@ class BaseFleetLogistics(drs.Module):
 
     def forward(self):
         self.fraction_to_ore2.value = self.calculate_routing_fraction()
+        return Flow(value=self.fraction_to_ore2.value)
 
 
 class ConcentratorFleet(BaseFleetLogistics):
@@ -144,7 +151,7 @@ class CyanidationFleet(BaseFleetLogistics):
 
 
 class BaseMetallurgicalPlant(drs.Module):
-    def __init__(self, config, fleet: BaseFleetLogistics):
+    def __init__(self, config, fleet: BaseFleetLogistics, ore1_stock, ore2_stock):
         super().__init__()
         self.config = config
         self.fleet = fleet
@@ -157,83 +164,39 @@ class BaseMetallurgicalPlant(drs.Module):
             "TrueTotalOreMilled_Level", initial_value=0.0
         )
 
-        # To be initialized by subclass based on fractions
-        self.true_ore1_stock = None
-        self.true_ore2_stock = None
+        self._ore1_stock = ore1_stock
+        self._ore2_stock = ore2_stock
 
-    def forward(self):
-        ore1_rate = self.true_ore1_stock.actual_outflow.value
-        ore2_rate = self.true_ore2_stock.actual_outflow.value
-        self.true_total_ore_milled.rate = ore1_rate + ore2_rate
+    def forward(self, ore1_outflow, ore2_outflow):
+        o1 = ore1_outflow.value if isinstance(ore1_outflow, Flow) else ore1_outflow
+        o2 = ore2_outflow.value if isinstance(ore2_outflow, Flow) else ore2_outflow
+        self.true_total_ore_milled.rate = o1 + o2
         self.true_ore_stock.rate = (
-            self.true_ore1_stock.mass.rate + self.true_ore2_stock.mass.rate
+            self._ore1_stock.mass.rate + self._ore2_stock.mass.rate
         )
 
         if self.true_ore_stock.rate < 0:
             self.true_ore_stock.lower_threshold = 0.0
 
 
-from .stockpiles import Stockpile
-
-
 class ConcentratorPlant(BaseMetallurgicalPlant):
-    def __init__(self, config: ConcentratorConfig, fleet: BaseFleetLogistics):
-        super().__init__(config, fleet)
+    def __init__(self, config: ConcentratorConfig, fleet: BaseFleetLogistics, ore1_stock, ore2_stock):
+        super().__init__(config, fleet, ore1_stock, ore2_stock)
 
-        initial_fraction = self.config.mean_grade / self.config.grade_percentage_scale
-
-        initial_mass1 = (1 - initial_fraction) * self.config.target_ore_stock_level
-        self.true_ore1_stock = Stockpile(
-            name="TrueOre1Stock",
-            expected_attributes=["grade"],
-            initial_mass=initial_mass1,
-            initial_attributes={"grade": initial_mass1 * self.config.mean_grade},
-        )
-
-        initial_mass2 = initial_fraction * self.config.target_ore_stock_level
-        self.true_ore2_stock = Stockpile(
-            name="TrueOre2Stock",
-            expected_attributes=["grade"],
-            initial_mass=initial_mass2,
-            initial_attributes={"grade": initial_mass2 * self.config.mean_grade},
-        )
-
-    def forward(self):
-        super().forward()
+    def forward(self, ore1_outflow, ore2_outflow):
+        super().forward(ore1_outflow, ore2_outflow)
 
 
 class CyanidationPlant(BaseMetallurgicalPlant):
-    def __init__(self, config: CyanidationConfig, fleet: BaseFleetLogistics):
-        super().__init__(config, fleet)
-
-        initial_ore2_fraction = 0.70
-
-        initial_mass1 = (1 - initial_ore2_fraction) * self.config.target_ore_stock_level
-        self.true_ore1_stock = Stockpile(
-            name="TrueOre1Stock",
-            expected_attributes=["cyanide"],
-            initial_mass=initial_mass1,
-            initial_attributes={
-                "cyanide": initial_mass1 * self.config.mean_cyanide_consumption
-            },
-        )
-
-        initial_mass2 = initial_ore2_fraction * self.config.target_ore_stock_level
-        self.true_ore2_stock = Stockpile(
-            name="TrueOre2Stock",
-            expected_attributes=["cyanide"],
-            initial_mass=initial_mass2,
-            initial_attributes={
-                "cyanide": initial_mass2 * self.config.mean_cyanide_consumption
-            },
-        )
+    def __init__(self, config: CyanidationConfig, fleet: BaseFleetLogistics, ore1_stock, ore2_stock):
+        super().__init__(config, fleet, ore1_stock, ore2_stock)
 
         self.true_total_cyanide_consumed = drs.Level(
             "TrueTotalCyanideConsumed_Level", initial_value=0.0
         )
         self.true_current_mill_kpt = drs.Variable("true_current_mill_kpt", 0.0)
 
-    def forward(self):
+    def forward(self, ore1_outflow, ore2_outflow):
         if (
             abs(
                 self.fleet.mine.true_ore_extraction.value
@@ -244,11 +207,13 @@ class CyanidationPlant(BaseMetallurgicalPlant):
             self.true_total_cyanide_consumed.value = 0.0
             self.true_total_ore_milled.value = 0.0
 
-        super().forward()
+        super().forward(ore1_outflow, ore2_outflow)
 
-        s1, s2 = self.true_ore1_stock, self.true_ore2_stock
-        ore1_cyanide = s1.actual_outflow.value * s1.current_concentration("cyanide")
-        ore2_cyanide = s2.actual_outflow.value * s2.current_concentration("cyanide")
+        o1 = ore1_outflow.value if isinstance(ore1_outflow, Flow) else ore1_outflow
+        o2 = ore2_outflow.value if isinstance(ore2_outflow, Flow) else ore2_outflow
+        s1, s2 = self._ore1_stock, self._ore2_stock
+        ore1_cyanide = o1 * s1.current_concentration("cyanide")
+        ore2_cyanide = o2 * s2.current_concentration("cyanide")
         cyanide_consumed = ore1_cyanide + ore2_cyanide
         self.true_total_cyanide_consumed.rate = cyanide_consumed
 

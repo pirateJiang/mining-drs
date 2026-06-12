@@ -1,15 +1,14 @@
 from drs.module import drs
 from examples.mining.components.modes import RequireDecision
 from examples.mining.components.config import ConcentratorConfig
-from examples.mining.components.sensors import ConcentratorSensorNetwork
 from examples.mining.components.controllers import ConcentratorController
 from examples.mining.components.modes import MODES
 
 class RL_MineController(ConcentratorController):
     """A modified controller that yields to the RL agent using RequireDecision."""
 
-    def __init__(self, config: ConcentratorConfig, sensors: ConcentratorSensorNetwork, mine, fleet, plant):
-        super().__init__(config, sensors, mine, fleet, plant)
+    def __init__(self, config: ConcentratorConfig, mine, fleet, plant):
+        super().__init__(config, mine, fleet, plant)
         self.pending_rl_action = None  # Stores the action passed in by env.step()
 
     def controller_decision(self):
@@ -38,7 +37,7 @@ class RL_MineController(ConcentratorController):
             self.reset_contingency_timer()
             return MODES[m.replace("_CONTINGENCY", "")]
 
-        if m.endswith("_MINE_SURGING") and self.sensors.belief_ore_stock.value <= self.config.target_ore_stock_level:
+        if m.endswith("_MINE_SURGING") and self.plant.true_ore_stock.value <= self.config.target_ore_stock_level:
             return MODES[m.replace("_MINE_SURGING", "")]
 
         return None

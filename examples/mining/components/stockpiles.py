@@ -1,6 +1,7 @@
 from typing import List, Dict, Optional
 
 from drs.module import drs
+from drs.flow import Flow
 
 
 class Stockpile(drs.Module):
@@ -28,7 +29,7 @@ class Stockpile(drs.Module):
             return 0.0
         return level.value / max(1e-6, self.mass.value)
 
-    def forward(self, requested_outflow_rate: float) -> float:
+    def forward(self, requested_outflow_rate: float) -> "Flow":
         inflow = self.mass.rate
         actual_outflow = requested_outflow_rate
         if self.mass.value <= 1e-6:
@@ -46,4 +47,4 @@ class Stockpile(drs.Module):
                 getattr(self, attr).lower_threshold = 0.0
 
         self.actual_outflow.value = actual_outflow
-        return actual_outflow
+        return Flow(value=actual_outflow)

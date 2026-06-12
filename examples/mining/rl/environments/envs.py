@@ -94,8 +94,8 @@ class MiningRLEnv(gym.Env):
         # 3. Stock Penalty
         stock_penalty_weight = self.rl_config.sparse_reward_stock_penalty_weight
         total_stock = (
-            self.sim.plant.true_ore1_stock.mass.value
-            + self.sim.plant.true_ore2_stock.mass.value
+            self.sim.true_ore1_stock.mass.value
+            + self.sim.true_ore2_stock.mass.value
         )
         overstock = max(0.0, total_stock - self.config.target_ore_stock_level)
         overstock_scaled = overstock / self.rl_config.stockpile_scaling_factor
@@ -108,13 +108,13 @@ class MiningRLEnv(gym.Env):
         # TODO: note to add action masking so if surging is needed only that mode can be selected
         if (
             action == 0
-            and self.sim.sensors.belief_ore_stock.value
+            and self.sim.plant.true_ore_stock.value
             > self.config.target_ore_stock_level
         ):
             action = 2  # Mode A Mine Surging
         elif (
             action == 1
-            and self.sim.sensors.belief_ore_stock.value
+            and self.sim.plant.true_ore_stock.value
             > self.config.target_ore_stock_level
         ):
             action = 3  # Mode B Mine Surging
@@ -157,15 +157,14 @@ class MiningRLEnv(gym.Env):
         return self._get_obs(), float(reward), terminated, False, {}
 
     def _get_obs(self):
-        sensors = self.sim.sensors
         target = self.config.target_ore_stock_level
 
         return np.array(
             [
-                sensors.belief_ore1_stock.value / target,
-                sensors.belief_ore2_stock.value / target,
-                sensors.belief_ore_stock.value / target,
-                sensors.belief_routing_fraction,
+                self.sim.true_ore1_stock.mass.value / target,
+                self.sim.true_ore2_stock.mass.value / target,
+                self.sim.plant.true_ore_stock.value / target,
+                self.sim.fleet.fraction_to_ore2.value,
                 self._get_current_time() / self.rl_config.time_scaling_factor,
             ],
             dtype=np.float32,

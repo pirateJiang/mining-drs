@@ -9,6 +9,7 @@ class ExecutionContext:
         if not hasattr(cls._local, "stack"):
             cls._local.stack = []
             cls._local.tracing = False
+            cls._local.flow_edges = []
         cls._local.stack.append(module)
 
     @classmethod
@@ -35,3 +36,10 @@ class ExecutionContext:
     @classmethod
     def is_tracing(cls) -> bool:
         return getattr(cls._local, "tracing", False)
+
+    @classmethod
+    def record_flow_edge(cls, source, target):
+        if source is not None:
+            if not hasattr(cls._local, "flow_edges"):
+                cls._local.flow_edges = []
+            cls._local.flow_edges.append((source, target))

@@ -1,6 +1,5 @@
 from .config import ConcentratorConfig, CyanidationConfig
 from .modes import MODES, OperatingMode, RequireDecision
-from .sensors import BaseSensorNetwork, ConcentratorSensorNetwork, CyanidationSensorNetwork
 from .generators import StochasticFaciesGradeGenerator, CyanideGeostatisticalBlockGenerator
 from .supply_chain import (
     ConcentratorMineFace, ConcentratorFleet, ConcentratorPlant,
@@ -14,11 +13,6 @@ __all__ = [
     "BaseBlendingModel",
     "ConcentratorModel",
     "CyanidationModel",
-    
-    # Sensors
-    "BaseSensorNetwork",
-    "ConcentratorSensorNetwork",
-    "CyanidationSensorNetwork",
     
     # Physical modules
     "Stockpile",

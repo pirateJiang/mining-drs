@@ -4,8 +4,12 @@ from drs.telemetry import Telemetry
 from .config import BaseDualStockpileConfig, ConcentratorConfig
 from .stockpiles import Stockpile
 from .supply_chain import (
-    BaseMineFace, BaseFleetLogistics, BaseMetallurgicalPlant,
-    ConcentratorMineFace, ConcentratorFleet, ConcentratorPlant
+    BaseMineFace,
+    BaseFleetLogistics,
+    BaseMetallurgicalPlant,
+    ConcentratorMineFace,
+    ConcentratorFleet,
+    ConcentratorPlant,
 )
 from .controllers import (
     BaseBlendingController,
@@ -52,8 +56,6 @@ class BaseBlendingModel(drs.Module):
                 lambda t, m, s, h: m.controller.current_contingency_duration.value,
             )
 
-
-
     def forward(self):
         self.global_time.rate = 1.0
 
@@ -62,13 +64,20 @@ class BaseBlendingModel(drs.Module):
         mine_flow = self.mine()
         ore1_flow, ore2_flow = self.fleet(mine_flow)
 
-        out1 = self.ore1_stock(self.controller.target_stock1_outflow_rate, inflow=ore1_flow)
-        out2 = self.ore2_stock(self.controller.target_stock2_outflow_rate, inflow=ore2_flow)
+        out1 = self.ore1_stock(
+            self.controller.target_stock1_outflow_rate, inflow=ore1_flow
+        )
+        out2 = self.ore2_stock(
+            self.controller.target_stock2_outflow_rate, inflow=ore2_flow
+        )
 
         self.plant(out1, out2)
 
     def is_terminating_condition_met(self) -> bool:
-        return self.mine.cumulative_extracted_mass.value >= self.config.total_ore_to_extract
+        return (
+            self.mine.cumulative_extracted_mass.value
+            >= self.config.total_ore_to_extract
+        )
 
     def print_statistics(self):
         print("\n--- Output Statistics ---")
@@ -112,7 +121,10 @@ class BaseBlendingModel(drs.Module):
             if hasattr(self.plant, "cumulative_milled_mass"):
                 total_ore_processed = self.plant.cumulative_milled_mass.value
             else:
-                total_ore_processed = self.mine.cumulative_extracted_mass.value - self.config.ore_to_be_extracted_during_warming_period
+                total_ore_processed = (
+                    self.mine.cumulative_extracted_mass.value
+                    - self.config.ore_to_be_extracted_during_warming_period
+                )
 
             throughput = total_ore_processed / active_time
             print(f"Throughput: {throughput:.4f} tons/day")
@@ -127,24 +139,33 @@ class ConcentratorModel(BaseBlendingModel):
         self.mine = ConcentratorMineFace(self.config)
         self.fleet = ConcentratorFleet(self.config)
 
-        initial_fraction = self.config.mean_grade / self.config.grade_percentage_scale
+        initial_fraction = self.config.mean_ore_fraction / 100
         initial_mass1 = (1 - initial_fraction) * self.config.target_ore_stock_level
         self.ore1_stock = Stockpile(
             name="Ore1Stock",
-            expected_attributes=["contained_grade_mass"],
+            expected_attributes=["contained_ore_fraction_mass"],
             initial_mass=initial_mass1,
-            initial_attributes={"contained_grade_mass": initial_mass1 * self.config.mean_grade},
+            initial_attributes={
+                "contained_ore_fraction_mass": initial_mass1
+                * self.config.mean_ore_fraction
+            },
         )
         initial_mass2 = initial_fraction * self.config.target_ore_stock_level
         self.ore2_stock = Stockpile(
             name="Ore2Stock",
-            expected_attributes=["contained_grade_mass"],
+            expected_attributes=["contained_ore_fraction_mass"],
             initial_mass=initial_mass2,
-            initial_attributes={"contained_grade_mass": initial_mass2 * self.config.mean_grade},
+            initial_attributes={
+                "contained_ore_fraction_mass": initial_mass2
+                * self.config.mean_ore_fraction
+            },
         )
 
-        self.plant = ConcentratorPlant(self.config, self.mine, self.fleet, self.ore1_stock, self.ore2_stock)
-        self.controller = ConcentratorController(self.config, self.mine, self.fleet, self.plant)
+        self.plant = ConcentratorPlant(
+            self.config, self.mine, self.fleet, self.ore1_stock, self.ore2_stock
+        )
+        self.controller = ConcentratorController(
+            self.config, self.mine, self.fleet, self.plant
+        )
 
         self.setup_telemetry()
-

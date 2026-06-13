@@ -32,9 +32,8 @@ class ConcentratorConfig(BaseDualStockpileConfig):
     Attribute: Ore Grade (%)
     """
 
-    mean_grade: float = 30.0
-    std_dev_grade: float = 5.0
-    grade_percentage_scale: float = 100.0
+    mean_ore_fraction: float = 30.0
+    std_dev_ore_fraction: float = 5.0
 
     # Generator Parameters
     min_ore_mass: float = 30000.0
@@ -49,5 +48,3 @@ class ConcentratorConfig(BaseDualStockpileConfig):
     mode_b_ore1_milling_rate: float = 4600.0
     mode_b_ore2_milling_rate: float = 800.0
     mode_b_contingency_ore2_milling_rate: float = 2500.0
-
-

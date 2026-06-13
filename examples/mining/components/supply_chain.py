@@ -15,7 +15,9 @@ class BaseMineFace(drs.Module):
         super().__init__()
         self.config = config
 
-        self.active_parcel_initial_mass = drs.Variable("active_parcel_initial_mass", 0.0)
+        self.active_parcel_initial_mass = drs.Variable(
+            "active_parcel_initial_mass", 0.0
+        )
 
         self.cumulative_extracted_mass = drs.Level(
             "cumulative_extracted_mass", initial_value=0.0
@@ -51,7 +53,9 @@ class BaseMineFace(drs.Module):
                 self.config.ore_to_be_extracted_during_warming_period
             )
         else:
-            self.cumulative_extracted_mass.upper_threshold = self.config.total_ore_to_extract
+            self.cumulative_extracted_mass.upper_threshold = (
+                self.config.total_ore_to_extract
+            )
 
         self.parcel_extracted_mass.upper_threshold = (
             self.active_parcel_initial_mass.value
@@ -59,19 +63,24 @@ class BaseMineFace(drs.Module):
 
         self.cumulative_extracted_mass.rate = target_extraction_rate
         self.parcel_extracted_mass.rate = target_extraction_rate
-        return Flow(value=MineOutput(
-            extraction_rate=target_extraction_rate,
-            parcel_mass=self.active_parcel_initial_mass.value,
-            attr_value=self._get_current_attr_value(),
-        ))
+        return Flow(
+            value=MineOutput(
+                extraction_rate=target_extraction_rate,
+                parcel_mass=self.active_parcel_initial_mass.value,
+                attr_value=self._get_current_attr_value(),
+            )
+        )
 
 
 class ConcentratorMineFace(BaseMineFace):
     def __init__(self, config: ConcentratorConfig):
         super().__init__(config)
         from .generators import StochasticFaciesGradeGenerator
+
         self.generator = StochasticFaciesGradeGenerator(self.config)
-        self.active_parcel_grade = drs.Variable("active_parcel_grade", 0.0)
+        self.active_parcel_ore_fraction = drs.Variable(
+            "active_parcel_ore_fraction", 0.0
+        )
         self._load_next_batch()
 
     def _load_next_batch(self):
@@ -79,18 +88,15 @@ class ConcentratorMineFace(BaseMineFace):
             parcel_flow = self.generator()
             parcel = parcel_flow.value
             self.active_parcel_initial_mass.value = parcel.mass
-            self.active_parcel_grade.value = parcel.grade
+            self.active_parcel_ore_fraction.value = parcel.ore_fraction
         except StopIteration:
             pass
 
     def _get_current_attr_value(self) -> float:
-        return self.active_parcel_grade.value
+        return self.active_parcel_ore_fraction.value
 
     def forward(self):
         return super().forward()
-
-
-
 
 
 # ---------------------------------------------------------
@@ -104,7 +110,9 @@ class BaseFleetLogistics(drs.Module):
         self.name = "Fleet"
         self.config = config
         self.expected_attributes = expected_attributes
-        self.stockpile2_routing_fraction = drs.Variable("stockpile2_routing_fraction", 0.0)
+        self.stockpile2_routing_fraction = drs.Variable(
+            "stockpile2_routing_fraction", 0.0
+        )
 
     def calculate_routing_fraction(self, incoming_attr_value: float) -> float:
         raise NotImplementedError(
@@ -114,7 +122,9 @@ class BaseFleetLogistics(drs.Module):
     def forward(self, mine_flow: Flow = None) -> Tuple[Flow, Flow]:
         if mine_flow is not None:
             incoming = mine_flow.value
-            self.stockpile2_routing_fraction.value = self.calculate_routing_fraction(incoming.attr_value)
+            self.stockpile2_routing_fraction.value = self.calculate_routing_fraction(
+                incoming.attr_value
+            )
             f = self.stockpile2_routing_fraction.value
             payload1 = MineOutput(
                 extraction_rate=incoming.extraction_rate * (1.0 - f),
@@ -134,13 +144,10 @@ class BaseFleetLogistics(drs.Module):
 
 class ConcentratorFleet(BaseFleetLogistics):
     def __init__(self, config):
-        super().__init__(config, expected_attributes=["contained_grade_mass"])
+        super().__init__(config, expected_attributes=["contained_ore_fraction_mass"])
 
     def calculate_routing_fraction(self, attr_value: float) -> float:
-        return attr_value / self.config.grade_percentage_scale
-
-
-
+        return attr_value / 100
 
 
 # ---------------------------------------------------------
@@ -165,19 +172,21 @@ class BaseMetallurgicalPlant(drs.Module):
     def forward(self, ore1_outflow, ore2_outflow):
         o1 = ore1_outflow.value if isinstance(ore1_outflow, Flow) else ore1_outflow
         o2 = ore2_outflow.value if isinstance(ore2_outflow, Flow) else ore2_outflow
-        
+
         total_inflow = o1 + o2
         self.cumulative_milled_mass.rate = total_inflow
-        
-
 
 
 class ConcentratorPlant(BaseMetallurgicalPlant):
-    def __init__(self, config: ConcentratorConfig, mine, fleet: BaseFleetLogistics, ore1_stock, ore2_stock):
+    def __init__(
+        self,
+        config: ConcentratorConfig,
+        mine,
+        fleet: BaseFleetLogistics,
+        ore1_stock,
+        ore2_stock,
+    ):
         super().__init__(config, mine, fleet, ore1_stock, ore2_stock)
 
     def forward(self, ore1_outflow, ore2_outflow):
         super().forward(ore1_outflow, ore2_outflow)
-
-
-

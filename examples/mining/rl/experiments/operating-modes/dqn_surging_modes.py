@@ -83,14 +83,14 @@ import argparse
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--total_stockpile_level", type=float, default=60000.0)
-    parser.add_argument("--std_dev_grade", type=float, default=0.0)
+    parser.add_argument("--std_dev_ore_fraction", type=float, default=0.0)
     args = parser.parse_args()
 
     # --- 1. Initialization (Defining the State) ---
     sim_config = ConcentratorConfig(
         replication_length=9999.0, 
         target_ore_stock_level=args.total_stockpile_level,
-        std_dev_grade=args.std_dev_grade
+        std_dev_ore_fraction=args.std_dev_ore_fraction
     )
     config = RLMineConfig(sim_config=sim_config)
     # NOTE: DQN fails without dense rewards
@@ -131,7 +131,7 @@ if __name__ == "__main__":
     # Initialize W&B
     wandb.init(
         project="dqn-mining-drs",
-        name=f"dqn_{int(args.total_stockpile_level)}_{int(args.std_dev_grade)}",
+        name=f"dqn_{int(args.total_stockpile_level)}_{int(args.std_dev_ore_fraction)}",
         config={
             "batch_size": BATCH_SIZE,
             "gamma": GAMMA,
@@ -140,7 +140,7 @@ if __name__ == "__main__":
             "eps_decay": EPS_DECAY_FRAMES,
             "lr": LEARNING_RATE,
             "total_stockpile_level": args.total_stockpile_level,
-            "std_dev_grade": args.std_dev_grade,
+            "std_dev_ore_fraction": args.std_dev_ore_fraction,
         },
     )
 
@@ -254,7 +254,7 @@ if __name__ == "__main__":
 
     weights_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "weights")
     os.makedirs(weights_dir, exist_ok=True)
-    weights_path = os.path.join(weights_dir, f"dqn_mining_drs_model_{int(args.total_stockpile_level)}_{int(args.std_dev_grade)}.pt")
+    weights_path = os.path.join(weights_dir, f"dqn_mining_drs_model_{int(args.total_stockpile_level)}_{int(args.std_dev_ore_fraction)}.pt")
     torch.save(model.state_dict(), weights_path)
     print(f"Saved model weights to {weights_path}")
 

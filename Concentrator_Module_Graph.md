@@ -7,11 +7,11 @@
 | Name | Path | Variables |
 |------|------|-----------|
 | `ConcentratorModel` | `(root)` | `global_time` |
-| `mine` | `mine` | `active_parcel_initial_mass, cumulative_extracted_mass, parcel_extracted_mass, active_parcel_grade` |
+| `mine` | `mine` | `active_parcel_initial_mass, cumulative_extracted_mass, parcel_extracted_mass, active_parcel_ore_fraction` |
 | `generator` | `mine.generator` | `—` |
 | `fleet` | `fleet` | `stockpile2_routing_fraction` |
-| `ore1_stock` | `ore1_stock` | `current_mass, actual_outflow_rate, contained_grade_mass` |
-| `ore2_stock` | `ore2_stock` | `current_mass, actual_outflow_rate, contained_grade_mass` |
+| `ore1_stock` | `ore1_stock` | `current_mass, actual_outflow_rate, contained_ore_fraction_mass` |
+| `ore2_stock` | `ore2_stock` | `current_mass, actual_outflow_rate, contained_ore_fraction_mass` |
 | `plant` | `plant` | `cumulative_milled_mass` |
 | `controller` | `controller` | `active_operating_mode, total_system_ore_mass, current_campaign_duration, current_contingency_duration, cumulative_time_mode_a, +9 more` |
 
@@ -23,13 +23,13 @@ subgraph root["<b>ConcentratorModel</b>"]
     root_vars[/"<b>ConcentratorModel</b> vars<br><i>global_time</i>"\]
     style root_vars fill:transparent,stroke-dasharray: 5 5
     subgraph mine["<b>mine</b>"]
-        mine_vars[/"<b>mine</b> vars<br><i>active_parcel_initial_mass</i><br><i>cumulative_extracted_mass</i><br><i>parcel_extracted_mass</i><br><i>active_parcel_grade</i>"\]
+        mine_vars[/"<b>mine</b> vars<br><i>active_parcel_initial_mass</i><br><i>cumulative_extracted_mass</i><br><i>parcel_extracted_mass</i><br><i>active_parcel_ore_fraction</i>"\]
         style mine_vars fill:transparent,stroke-dasharray: 5 5
         mine_generator(["<b>generator</b>"])
     end
     fleet(["<b>fleet</b><br><i>stockpile2_routing_fraction</i>"])
-    ore1_stock(["<b>ore1_stock</b><br><i>current_mass</i><br><i>actual_outflow_rate</i><br><i>contained_grade_mass</i>"])
-    ore2_stock(["<b>ore2_stock</b><br><i>current_mass</i><br><i>actual_outflow_rate</i><br><i>contained_grade_mass</i>"])
+    ore1_stock(["<b>ore1_stock</b><br><i>current_mass</i><br><i>actual_outflow_rate</i><br><i>contained_ore_fraction_mass</i>"])
+    ore2_stock(["<b>ore2_stock</b><br><i>current_mass</i><br><i>actual_outflow_rate</i><br><i>contained_ore_fraction_mass</i>"])
     plant(["<b>plant</b><br><i>cumulative_milled_mass</i>"])
     controller(["<b>controller</b><br><i>active_operating_mode</i><br><i>total_system_ore_mass</i><br><i>current_campaign_duration</i><br><i>current_contingency_duration</i><br><i>cumulative_time_mode_a</i><br><i>+9 more</i>"])
 end

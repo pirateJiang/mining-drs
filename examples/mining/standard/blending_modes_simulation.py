@@ -71,7 +71,7 @@ def plot_monte_carlo_throughput(N: int = 1, total_stockpile_level: float = 60000
     for sigma in sigmas:
         config = ConcentratorConfig(
             replication_length=99999.0,
-            std_dev_grade=sigma,
+            std_dev_ore_fraction=sigma,
             target_ore_stock_level=total_stockpile_level,
             prob_new_facies=0.3,
         )
@@ -118,7 +118,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--total_stockpile_level", type=float, default=60000.0)
-    parser.add_argument("--std_dev_grade", type=float, default=5.0)
+    parser.add_argument("--std_dev_ore_fraction", type=float, default=5.0)
     parser.add_argument("--N", type=int, default=1)
     args = parser.parse_args()
 
@@ -128,7 +128,7 @@ if __name__ == "__main__":
     config = ConcentratorConfig(
         replication_length=99999.0,
         target_ore_stock_level=args.total_stockpile_level,
-        std_dev_grade=args.std_dev_grade,
+        std_dev_ore_fraction=args.std_dev_ore_fraction,
         prob_new_facies=0.3,
     )
     sim = ConcentratorModel(config, enable_telemetry=True)

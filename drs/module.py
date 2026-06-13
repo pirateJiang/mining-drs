@@ -29,6 +29,7 @@ class Module:
         ExecutionContext.push(self)
         try:
             if caller is not None and caller is not self:
+
                 def validate_drs_type(arg, arg_name):
                     if arg is None:
                         return
@@ -36,7 +37,7 @@ class Module:
                         for item in arg:
                             validate_drs_type(item, arg_name)
                         return
-                        
+
                     if not isinstance(arg, (Flow, Variable, DataPoint)):
                         raise RuntimeError(
                             f"Hidden Dependency Error: '{type(caller).__name__}' passed an untracked type "
@@ -236,6 +237,7 @@ class Module:
         return result
 
 
+# NOTE: could remove and use just modules and Flow instead of DataSource and DataPoint. May be better.
 class DataSource(Module):
     """Yields ``DataPoint`` batches one at a time.
 

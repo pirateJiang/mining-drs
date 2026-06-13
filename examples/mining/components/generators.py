@@ -7,13 +7,13 @@ from .config import ConcentratorConfig
 
 
 class StochasticFaciesGradeGenerator(drs.DataSource):
-    """Random facies-based grade generation for the Concentrator model."""
+    """Random facies-based ore_fraction generation for the Concentrator model."""
 
     def __init__(self, config: ConcentratorConfig):
         super().__init__()
         self.config = config
         self.next_is_new_facies = True
-        self.current_grade = config.mean_grade
+        self.current_ore_fraction = config.mean_ore_fraction
         self.first_call = True
 
     def forward(self):
@@ -24,22 +24,22 @@ class StochasticFaciesGradeGenerator(drs.DataSource):
 
         if self.first_call:
             self.first_call = False
-            return drs.DataPoint(mass=40000.0, grade=c.mean_grade)
+            return drs.DataPoint(mass=40000.0, ore_fraction=c.mean_ore_fraction)
 
         mass = random.uniform(c.min_ore_mass, c.max_ore_mass)
 
         if self.next_is_new_facies:
-            if c.std_dev_grade != 0:
-                grade = random.gauss(c.mean_grade, c.std_dev_grade)
+            if c.std_dev_ore_fraction != 0:
+                ore_fraction = random.gauss(c.mean_ore_fraction, c.std_dev_ore_fraction)
             else:
-                grade = c.mean_grade
+                ore_fraction = c.mean_ore_fraction
         else:
-            grade = self.current_grade + c.variation_same_facies * random.uniform(-1, 1)
+            ore_fraction = self.current_ore_fraction + c.variation_same_facies * random.uniform(-1, 1)
 
-        self.current_grade = max(grade, 0.0)
+        self.current_ore_fraction = max(ore_fraction, 0.0)
         self.next_is_new_facies = random.random() <= c.prob_new_facies
 
-        return drs.DataPoint(mass=mass, grade=self.current_grade)
+        return drs.DataPoint(mass=mass, ore_fraction=self.current_ore_fraction)
 
 
 

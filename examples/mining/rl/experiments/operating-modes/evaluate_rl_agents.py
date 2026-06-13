@@ -116,7 +116,7 @@ def plot_rl_monte_carlo_throughput(
     for sigma in sigmas:
         sim_config = ConcentratorConfig(
             replication_length=99999.0,
-            std_dev_grade=sigma,
+            std_dev_ore_fraction=sigma,
             target_ore_stock_level=total_stockpile_level,
         )
         config = RLMineConfig(sim_config=sim_config)
@@ -171,7 +171,7 @@ def plot_policy_decision_heatmap(
     time_scale = config.time_scaling_factor
 
     ore1_vals = np.linspace(0, target_stock, 100)
-    grade_vals = np.linspace(0, 100, 100)
+    ore_fraction_vals = np.linspace(0, 100, 100)
 
     fig, axes = plt.subplots(
         2, len(times), figsize=(5 * len(times), 10), sharex=True, sharey=True
@@ -186,16 +186,16 @@ def plot_policy_decision_heatmap(
 
     for idx, t in enumerate(times):
         batch_size = 10000
-        X, Y = np.meshgrid(ore1_vals, grade_vals)
+        X, Y = np.meshgrid(ore1_vals, ore_fraction_vals)
         grid_ore1 = X.flatten()
-        grid_grade = Y.flatten()
+        grid_ore_fraction = Y.flatten()
         grid_ore2 = target_stock - grid_ore1
 
         grid_obs = np.zeros((batch_size, 5), dtype=np.float32)
         grid_obs[:, 0] = grid_ore1 / target_stock
         grid_obs[:, 1] = grid_ore2 / target_stock
         grid_obs[:, 2] = 1.0
-        grid_obs[:, 3] = grid_grade / 100.0
+        grid_obs[:, 3] = grid_ore_fraction / 100.0
         grid_obs[:, 4] = t / time_scale
 
         grid_obs_tensor = torch.tensor(grid_obs, device=device)
@@ -281,7 +281,7 @@ def plot_policy_decision_heatmap(
 
         ax_cont.set_title(f"Time = {t} Days\n(Gradient)")
         if idx == 0:
-            ax_cont.set_ylabel("Parcel Grade (%)")
+            ax_cont.set_ylabel("Parcel Ore Fraction (%)")
 
         # --- Bottom Plot (Discrete) ---
         c2 = ax_disc.pcolormesh(
@@ -296,7 +296,7 @@ def plot_policy_decision_heatmap(
         ax_disc.set_title(f"Time = {t} Days\n(Sharp)")
         ax_disc.set_xlabel("Ore 1 Stockpile")
         if idx == 0:
-            ax_disc.set_ylabel("Parcel Grade (%)")
+            ax_disc.set_ylabel("Parcel Ore Fraction (%)")
 
     fig.suptitle(f"Policy Decision Heatmap ({model_name})", fontsize=16)
     plt.tight_layout()
@@ -307,7 +307,7 @@ def plot_policy_decision_heatmap(
 
 
 def plot_non_stationary_time_slice(
-    model, model_name: str, device, config: RLMineConfig, grades=[10, 25, 50, 75, 90]
+    model, model_name: str, device, config: RLMineConfig, ore_fractions=[10, 25, 50, 75, 90]
 ):
     print(f"\n--- Generating Non-Stationary Time Slice for {model_name} ---")
     target_stock = config.sim_config.target_ore_stock_level
@@ -317,9 +317,9 @@ def plot_non_stationary_time_slice(
     ore1_vals = np.linspace(0, target_stock, 100)
 
     fig, axes = plt.subplots(
-        2, len(grades), figsize=(5 * len(grades), 10), sharex=True, sharey=True
+        2, len(ore_fractions), figsize=(5 * len(ore_fractions), 10), sharex=True, sharey=True
     )
-    if len(grades) == 1:
+    if len(ore_fractions) == 1:
         axes = np.array([axes]).T
 
     from matplotlib.colors import ListedColormap
@@ -327,7 +327,7 @@ def plot_non_stationary_time_slice(
     colors = ["#1f77b4", "#d62728"]
     cmap_discrete = ListedColormap(colors)
 
-    for idx, grade in enumerate(grades):
+    for idx, ore_fraction in enumerate(ore_fractions):
         batch_size = 10000
         X, Y = np.meshgrid(time_vals, ore1_vals)
         grid_t = X.flatten()
@@ -338,7 +338,7 @@ def plot_non_stationary_time_slice(
         grid_obs[:, 0] = grid_ore1 / target_stock
         grid_obs[:, 1] = grid_ore2 / target_stock
         grid_obs[:, 2] = 1.0
-        grid_obs[:, 3] = grade / 100.0
+        grid_obs[:, 3] = ore_fraction / 100.0
         grid_obs[:, 4] = grid_t / time_scale
 
         grid_obs_tensor = torch.tensor(grid_obs, device=device)
@@ -394,8 +394,8 @@ def plot_non_stationary_time_slice(
         action_map_cont = value_cont.reshape(100, 100)
         action_map_disc = value_disc.reshape(100, 100)
 
-        ax_cont = axes[0, idx] if len(grades) > 1 else axes[0, 0]
-        ax_disc = axes[1, idx] if len(grades) > 1 else axes[1, 0]
+        ax_cont = axes[0, idx] if len(ore_fractions) > 1 else axes[0, 0]
+        ax_disc = axes[1, idx] if len(ore_fractions) > 1 else axes[1, 0]
 
         # --- Top Plot (Continuous) ---
         if isinstance(model, (DQN, RainbowNetwork)):
@@ -411,7 +411,7 @@ def plot_non_stationary_time_slice(
                 vmax=max_abs,
                 shading="auto",
             )
-            if idx == len(grades) - 1:
+            if idx == len(ore_fractions) - 1:
                 fig.colorbar(
                     c1, ax=axes[0, :], label="Q(Mode B) - Q(Mode A)", fraction=0.02
                 )
@@ -419,10 +419,10 @@ def plot_non_stationary_time_slice(
             c1 = ax_cont.pcolormesh(
                 X, Y, action_map_cont, cmap="coolwarm", vmin=0, vmax=1, shading="auto"
             )
-            if idx == len(grades) - 1:
+            if idx == len(ore_fractions) - 1:
                 fig.colorbar(c1, ax=axes[0, :], label="P(Mode B)", fraction=0.02)
 
-        ax_cont.set_title(f"Grade = {grade}%\n(Gradient)")
+        ax_cont.set_title(f"Ore Fraction = {ore_fraction}%\n(Gradient)")
         if idx == 0:
             ax_cont.set_ylabel("Ore 1 Stockpile")
 
@@ -436,7 +436,7 @@ def plot_non_stationary_time_slice(
             vmax=1.5,
             shading="auto",
         )
-        ax_disc.set_title(f"Grade = {grade}%\n(Sharp)")
+        ax_disc.set_title(f"Ore Fraction = {ore_fraction}%\n(Sharp)")
         ax_disc.set_xlabel("Time (Days)")
         if idx == 0:
             ax_disc.set_ylabel("Ore 1 Stockpile")
@@ -885,7 +885,7 @@ def generate_policy_decision_video(
 
         ore1 = obs[0] * target_stock
         ore2 = obs[1] * target_stock
-        grade = obs[3] * 100.0
+        ore_fraction = obs[3] * 100.0
         t_day = obs[4] * time_scale
 
         with torch.no_grad():
@@ -903,7 +903,7 @@ def generate_policy_decision_video(
                 logits, _ = model(obs_tensor)
                 action = logits.argmax(dim=-1).item()
 
-        trajectory.append((t_day, ore1, grade, action))
+        trajectory.append((t_day, ore1, ore_fraction, action))
 
         obs, reward, terminated, truncated, info = env.step(action)
         if isinstance(model, ActorCriticLSTM):
@@ -913,11 +913,11 @@ def generate_policy_decision_video(
 
     frames = []
     ore1_vals = np.linspace(0, target_stock, 100)
-    grade_vals = np.linspace(0, 100, 100)
-    X, Y = np.meshgrid(ore1_vals, grade_vals)
+    ore_fraction_vals = np.linspace(0, 100, 100)
+    X, Y = np.meshgrid(ore1_vals, ore_fraction_vals)
 
     grid_ore1 = X.flatten()
-    grid_grade = Y.flatten()
+    grid_ore_fraction = Y.flatten()
     grid_ore2 = target_stock - grid_ore1
 
     from matplotlib.colors import ListedColormap
@@ -926,7 +926,7 @@ def generate_policy_decision_video(
     colors = ["#1f77b4", "#d62728"]
     cmap_discrete = ListedColormap(colors)
 
-    for step_idx, (t_day, current_ore1, current_grade, chosen_action) in enumerate(
+    for step_idx, (t_day, current_ore1, current_ore_fraction, chosen_action) in enumerate(
         trajectory
     ):
         batch_size = 10000
@@ -934,7 +934,7 @@ def generate_policy_decision_video(
         grid_obs[:, 0] = grid_ore1 / target_stock
         grid_obs[:, 1] = grid_ore2 / target_stock
         grid_obs[:, 2] = 1.0
-        grid_obs[:, 3] = grid_grade / 100.0
+        grid_obs[:, 3] = grid_ore_fraction / 100.0
         grid_obs[:, 4] = t_day / time_scale
 
         grid_obs_tensor = torch.tensor(grid_obs, device=device)
@@ -1032,7 +1032,7 @@ def generate_policy_decision_video(
         for ax in [ax1, ax2]:
             ax.scatter(
                 [current_ore1],
-                [current_grade],
+                [current_ore_fraction],
                 color=dot_color,
                 edgecolor="black",
                 s=100,
@@ -1073,10 +1073,9 @@ if __name__ == "__main__":
     parser.add_argument("--N", type=int, default=100)
     parser.add_argument("--total_stockpile_level", type=float, default=60000.0)
     parser.add_argument(
-        "--std_dev_grade",
-        "--std_dev_new_facies",
-        dest="std_dev_grade",
+        "--std_dev_ore_fraction",
         type=float,
+        dest="std_dev_ore_fraction",
         default=5.0,
     )
     args = parser.parse_args()
@@ -1086,7 +1085,7 @@ if __name__ == "__main__":
     # We need to temporarily instantiate an env to get shapes
     temp_sim_config = ConcentratorConfig(
         target_ore_stock_level=args.total_stockpile_level,
-        std_dev_grade=args.std_dev_grade,
+        std_dev_ore_fraction=args.std_dev_ore_fraction,
     )
     temp_config = RLMineConfig(sim_config=temp_sim_config)
     temp_env = MiningRLEnv(temp_config)
@@ -1095,16 +1094,19 @@ if __name__ == "__main__":
 
     if args.model_type == "dqn":
         model = DQN(obs_shape, num_actions).to(device)
-        default_model_name = f"dqn_mining_drs_model_{int(args.total_stockpile_level)}_{int(args.std_dev_grade)}.pt"
+        default_model_name = f"dqn_mining_drs_model_{int(args.total_stockpile_level)}_{int(args.std_dev_ore_fraction)}.pt"
     elif args.model_type == "rainbow_dqn":
+        from rainbow_dqn_surging_modes import RainbowNetwork
         model = RainbowNetwork(obs_shape, num_actions, ATOM_SIZE).to(device)
-        default_model_name = f"rainbow_dqn_mining_drs_model_{int(args.total_stockpile_level)}_{int(args.std_dev_grade)}.pt"
+        default_model_name = f"rainbow_dqn_mining_drs_model_{int(args.total_stockpile_level)}_{int(args.std_dev_ore_fraction)}.pt"
     elif args.model_type == "ppo_lstm":
+        from ppo_lstm_surging_modes import ActorCriticLSTM
         model = ActorCriticLSTM(obs_shape, num_actions).to(device)
-        default_model_name = f"ppo_lstm_mining_drs_model_{int(args.total_stockpile_level)}_{int(args.std_dev_grade)}.pt"
+        default_model_name = f"ppo_lstm_mining_drs_model_{int(args.total_stockpile_level)}_{int(args.std_dev_ore_fraction)}.pt"
     else:
+        from ppo_surging_modes import ActorCritic
         model = ActorCritic(obs_shape, num_actions).to(device)
-        default_model_name = f"ppo_mining_drs_model_{int(args.total_stockpile_level)}_{int(args.std_dev_grade)}.pt"
+        default_model_name = f"ppo_mining_drs_model_{int(args.total_stockpile_level)}_{int(args.std_dev_ore_fraction)}.pt"
 
     model_path = args.model_path
     if model_path is None:

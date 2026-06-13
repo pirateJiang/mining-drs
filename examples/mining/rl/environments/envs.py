@@ -31,7 +31,7 @@ class MiningRLEnv(gym.Env):
         # 0: Mode A, 1: Mode B
         self.action_space = spaces.Discrete(2)
 
-        # [Ore1_Stock, Ore2_Stock, Total_Stock, Parcel_Grade, Time]
+        # [Ore1_Stock, Ore2_Stock, Total_Stock, Parcel_Ore_Fraction, Time]
         self.observation_space = spaces.Box(
             low=0.0, high=np.inf, shape=(5,), dtype=np.float32
         )

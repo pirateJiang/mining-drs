@@ -1,4 +1,12 @@
-"""Generic data point for data yielded by DataSource."""
+"""
+Generic data point for data yielded by DataSource.
+
+Note on alternatives:
+If you prefer standard Python semantics, you could potentially bypass `DataSource` entirely 
+and use a plain Python generator (e.g. `yield DataPoint(...)`). However, the `DataSource` 
+class is retained to seamlessly integrate with `Module`, making it a first-class citizen 
+in the simulation graph and tracking execution contexts and telemetry.
+"""
 
 
 class DataPoint:
@@ -14,6 +22,7 @@ class DataPoint:
 
     def __init__(self, **kwargs):
         self._data = dict(kwargs)
+        self._source = None
 
     def __getattr__(self, name):
         if name.startswith("_"):

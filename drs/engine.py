@@ -101,7 +101,7 @@ class DRSEngine:
             var_is_upper = True
 
             if hasattr(var, "rate"):
-                rate = var.rate if not isinstance(getattr(var, '_rate', None), Variable) else var.rate
+                rate = var.rate
                 if rate > 0:
                     dt_for_var = (var.upper_threshold - var.value) / rate
                 elif rate < 0:

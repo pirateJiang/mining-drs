@@ -1,1 +1,1 @@
-from .module_graph import plot_module_graph, save_module_graph_report
+from .module_graph import save_module_graph_report

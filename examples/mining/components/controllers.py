@@ -39,7 +39,7 @@ class BaseBlendingController(drs.Module):
         self.plant = plant
 
         self.active_operating_mode = drs.Variable("active_operating_mode", MODES["MODE_A"])
-        self.total_system_ore_mass = drs.Level("total_system_ore_mass", initial_value=config.target_ore_stock_level)
+        self.total_system_ore_mass = drs.Variable("total_system_ore_mass", initial_value=config.target_ore_stock_level)
 
         self.current_campaign_duration = drs.Timer(
             "current_campaign_duration", initial_value=0.0
@@ -113,9 +113,9 @@ class BaseBlendingController(drs.Module):
             self.cumulative_time_mode_b_surging.reset()
             self.cumulative_time_shutdown.reset()
 
-        extraction_rate = self.mine.cumulative_extracted_mass.rate
-        milled_rate = self.plant.cumulative_milled_mass.rate
-        self.total_system_ore_mass.rate = extraction_rate - milled_rate
+        self.total_system_ore_mass.value = (
+            self.parent.ore1_stock.current_mass.value + self.parent.ore2_stock.current_mass.value
+        )
 
         next_mode = self.active_operating_mode.value.check_end_conditions(self.parent)
 

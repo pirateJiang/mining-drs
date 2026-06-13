@@ -1,6 +1,6 @@
 import math
 from typing import Iterator
-from .variables import Variable, Level, Timer, Expression
+from .variables import Variable, Level, Timer
 from .execution_context import ExecutionContext
 from .data_source import DataPoint
 from .flow import Flow
@@ -21,6 +21,8 @@ class Module:
         self._dep_seen = set()
         self._flow_dependencies = []
         self._flow_dep_seen = set()
+        self._data_dependencies = []
+        self._data_dep_seen = set()
 
     def __call__(self, *args, **kwargs):
         caller = ExecutionContext.get_current()
@@ -35,7 +37,7 @@ class Module:
                             validate_drs_type(item, arg_name)
                         return
                         
-                    if not isinstance(arg, (Flow, Variable, Expression, DataPoint)):
+                    if not isinstance(arg, (Flow, Variable, DataPoint)):
                         raise RuntimeError(
                             f"Hidden Dependency Error: '{type(caller).__name__}' passed an untracked type "
                             f"'{type(arg).__name__}' to '{type(self).__name__}' for {arg_name}. "
@@ -51,19 +53,23 @@ class Module:
                 if isinstance(arg, Flow) and arg._source is not None:
                     ExecutionContext.record_flow_edge(arg._source, self)
                     self._record_flow_edge(arg._source)
+                elif isinstance(arg, DataPoint) and arg._source is not None:
+                    self._record_data_edge(arg._source)
             for v in kwargs.values():
                 if isinstance(v, Flow) and v._source is not None:
                     ExecutionContext.record_flow_edge(v._source, self)
                     self._record_flow_edge(v._source)
+                elif isinstance(v, DataPoint) and v._source is not None:
+                    self._record_data_edge(v._source)
 
             result = self.forward(*args, **kwargs)
 
             if isinstance(result, tuple):
                 for res in result:
-                    if not isinstance(res, Flow):
+                    if not isinstance(res, (Flow, DataPoint)):
                         raise RuntimeError(
                             f"Tuple returned from '{type(self).__name__}.forward()' "
-                            f"must contain only drs.Flow objects."
+                            f"must contain only drs.Flow or drs.DataPoint objects."
                         )
                     res._source = self
                 return result
@@ -71,23 +77,23 @@ class Module:
             if isinstance(self, DataSource):
                 if result is None:
                     raise RuntimeError(
-                        f"'{type(self).__name__}.forward()' must return drs.Flow. "
+                        f"'{type(self).__name__}.forward()' must return drs.DataPoint or drs.Flow. "
                         f"DataSource subclasses cannot return None."
                     )
-                if not isinstance(result, Flow):
+                if not isinstance(result, (Flow, DataPoint)):
                     raise RuntimeError(
                         f"'{type(self).__name__}.forward()' returned "
-                        f"'{type(result).__name__}', not drs.Flow."
+                        f"'{type(result).__name__}', not drs.Flow or drs.DataPoint."
                     )
 
-            if result is not None and not isinstance(result, Flow):
+            if result is not None and not isinstance(result, (Flow, DataPoint)):
                 raise RuntimeError(
                     f"'{type(self).__name__}.forward()' returned "
-                    f"'{type(result).__name__}', not a drs.Flow. "
-                    f"Inter-module communication must use drs.Flow."
+                    f"'{type(result).__name__}', not a drs.Flow or drs.DataPoint. "
+                    f"Inter-module communication must use drs.Flow or drs.DataPoint."
                 )
 
-            if isinstance(result, Flow):
+            if isinstance(result, (Flow, DataPoint)):
                 result._source = self
 
             return result
@@ -141,6 +147,14 @@ class Module:
             if key not in self._flow_dep_seen:
                 self._flow_dep_seen.add(key)
                 self._flow_dependencies.append(source_module)
+
+    def _record_data_edge(self, source_module):
+        """Record that this module received a DataPoint from source_module."""
+        if source_module is not None and source_module is not self:
+            key = id(source_module)
+            if key not in self._data_dep_seen:
+                self._data_dep_seen.add(key)
+                self._data_dependencies.append(source_module)
 
     def variables(self) -> Iterator[Variable]:
         """Recursively yield all variables without duplicates."""
@@ -210,6 +224,8 @@ class Module:
         self._dep_seen.clear()
         self._flow_dependencies.clear()
         self._flow_dep_seen.clear()
+        self._data_dependencies.clear()
+        self._data_dep_seen.clear()
 
     def get_dependency_graph(self) -> list:
         """Return all recorded read dependencies from this module and all sub-modules

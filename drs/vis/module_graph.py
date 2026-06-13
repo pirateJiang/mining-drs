@@ -1,199 +1,14 @@
 import os
-import matplotlib.pyplot as plt
-import matplotlib.patches as mpatches
-import networkx as nx
-
-
-def plot_module_graph(model, show_vars=False, figsize=(14, 10), save_path=None):
-    G = nx.DiGraph()
-    module_paths = {}
-    parent_of = {}
-
-    for path, mod in model.named_modules():
-        node_id = path if path else type(mod).__name__
-        module_paths[node_id] = (path, mod)
-        G.add_node(node_id, module=mod, path=path)
-
-        if path:
-            parts = path.rsplit(".", 1)
-            parent_path = parts[0] if len(parts) > 1 else ""
-            parent_of[node_id] = parent_path
-
-    reader_node = {}
-    for rpath, rmod in model.named_modules():
-        for src_mod, dep_var in rmod._dependencies:
-            for spath, smod in model.named_modules():
-                if smod is src_mod:
-                    src_id = spath if spath else type(smod).__name__
-                    rdr_id = rpath if rpath else type(rmod).__name__
-                    if src_id != rdr_id and src_id in G and rdr_id in G:
-                        G.add_edge(
-                            src_id, rdr_id, var_name=dep_var.name, edge_type="read"
-                        )
-                    break
-
-    for rpath, rmod in model.named_modules():
-        for src_mod in rmod._flow_dependencies:
-            for spath, smod in model.named_modules():
-                if smod is src_mod:
-                    src_id = spath if spath else type(smod).__name__
-                    rdr_id = rpath if rpath else type(rmod).__name__
-                    if src_id != rdr_id and src_id in G and rdr_id in G:
-                        G.add_edge(src_id, rdr_id, edge_type="flow")
-                    break
-
-    pos = _tree_layout(G, parent_of, module_paths)
-
-    fig, ax = plt.subplots(figsize=figsize)
-    ax.set_title("DRS Module Graph", fontsize=16, fontweight="bold", pad=20)
-    ax.set_facecolor("#FAFAFA")
-    ax.margins(0.15)
-
-    node_colors = []
-    node_sizes = []
-    labels = {}
-    for node_id in G.nodes():
-        mod = G.nodes[node_id].get("module")
-        node_colors.append("#BDC3C7")
-
-        path = G.nodes[node_id].get("path", "")
-        short_name = path.split(".")[-1] if path else type(mod).__name__
-        label = short_name
-
-        if show_vars and mod is not None:
-            var_names = list(mod._variables.keys())[:3]
-            if var_names:
-                label += "\n" + "\n".join(var_names[:3])
-                if len(mod._variables) > 3:
-                    label += f"\n+{len(mod._variables) - 3} more"
-
-        labels[node_id] = label
-
-        var_count = len(mod._variables) if mod is not None else 0
-        node_sizes.append(max(800, 600 + var_count * 40))
-
-    dep_edges = [
-        (u, v) for u, v, d in G.edges(data=True) if d.get("edge_type") == "read"
-    ]
-    flow_edges = [
-        (u, v) for u, v, d in G.edges(data=True) if d.get("edge_type") == "flow"
-    ]
-
-    nx.draw_networkx_edges(
-        G,
-        pos,
-        ax=ax,
-        edgelist=dep_edges,
-        edge_color="#E74C3C",
-        style="dashed",
-        width=1.5,
-        alpha=0.6,
-        arrows=True,
-        arrowsize=15,
-        connectionstyle="arc3,rad=0.15",
-    )
-
-    if flow_edges:
-        nx.draw_networkx_edges(
-            G,
-            pos,
-            ax=ax,
-            edgelist=flow_edges,
-            edge_color="#3498DB",
-            style="solid",
-            width=2.0,
-            alpha=0.8,
-            arrows=True,
-            arrowsize=15,
-            connectionstyle="arc3,rad=0.15",
-        )
-
-    nx.draw_networkx_nodes(
-        G,
-        pos,
-        ax=ax,
-        node_color=node_colors,
-        node_size=node_sizes,
-        edgecolors="#333333",
-        linewidths=1.5,
-        alpha=0.9,
-    )
-
-    nx.draw_networkx_labels(
-        G,
-        pos,
-        ax=ax,
-        labels=labels,
-        font_size=8,
-        font_weight="bold",
-    )
-
-    legend_patches = [mpatches.Patch(color="#BDC3C7", label="Module", alpha=0.9)]
-
-    if dep_edges:
-        legend_patches.append(
-            mpatches.Patch(color="#E74C3C", label="Dependency (read)", alpha=0.6)
-        )
-    if flow_edges:
-        legend_patches.append(
-            mpatches.Patch(color="#3498DB", label="Data flow (transient)", alpha=0.8)
-        )
-
-    ax.legend(handles=legend_patches, loc="upper left", fontsize=9, framealpha=0.9)
-
-    ax.axis("off")
-    fig.tight_layout()
-
-    if save_path:
-        fig.savefig(save_path, dpi=150, bbox_inches="tight")
-        print(f"Saved module graph to {save_path}")
-
-    return fig
-
-
-def _tree_layout(G, parent_of, module_paths):
-    depths = {}
-    for node_id in G.nodes():
-        path = G.nodes[node_id].get("path", "")
-        depths[node_id] = path.count(".") + 1 if path else 0
-
-    children_of = {}
-    for node_id, parent_id in parent_of.items():
-        children_of.setdefault(parent_id, []).append(node_id)
-
-    max_depth = max(depths.values()) if depths else 1
-    depth_groups = {}
-    for node_id, d in depths.items():
-        depth_groups.setdefault(d, []).append(node_id)
-
-    x_spacing = 3.0
-    y_spacing = 1.0
-
-    pos = {}
-    for d in sorted(depth_groups.keys()):
-        x = d * x_spacing
-        nodes_at_depth = depth_groups[d]
-        y_center = 0.0
-        for i, node_id in enumerate(nodes_at_depth):
-            y = y_center + (i - (len(nodes_at_depth) - 1) / 2) * y_spacing
-            pos[node_id] = (x, y)
-
-    for node_id in G.nodes():
-        if node_id not in pos:
-            pos[node_id] = (0, 0)
-
-    return pos
-
+import urllib.request
+import urllib.error
 
 def _node_id(path):
     return "root" if not path else path.replace(".", "_")
 
-
 def _node_label(path, mod):
     return path.split(".")[-1] if path else type(mod).__name__
 
-
-def _generate_mermaid(model) -> str:
+def _generate_mermaid(model, show_vars=False) -> str:
     lines = []
     lines.append("flowchart TD")
 
@@ -223,13 +38,32 @@ def _generate_mermaid(model) -> str:
             path, mod = module_index[child_id]
             nid = _node_id(path)
             label = _node_label(path, mod)
+            
             grandchild_ids = tree.get(child_id, [])
 
             if grandchild_ids:
-                lines.append(f'{prefix}subgraph {nid}["{label}"]')
+                lines.append(f'{prefix}subgraph {nid}["<b>{_node_label(path, mod)}</b>"]')
+                
+                if show_vars and mod is not None:
+                    var_names = list(mod._variables.keys())[:5]
+                    if var_names:
+                        var_label = f"<b>{_node_label(path, mod)}</b> vars"
+                        var_label += "<br><i>" + "</i><br><i>".join(var_names[:5]) + "</i>"
+                        if len(mod._variables) > 5:
+                            var_label += f"<br><i>+{len(mod._variables) - 5} more</i>"
+                        lines.append(f'{prefix}    {nid}_vars[/"{var_label}"\\]')
+                        lines.append(f'{prefix}    style {nid}_vars fill:transparent,stroke-dasharray: 5 5')
+                        
                 _render_children(child_id, depth + 1)
                 lines.append(f"{prefix}end")
             else:
+                label = f"<b>{_node_label(path, mod)}</b>"
+                if show_vars and mod is not None:
+                    var_names = list(mod._variables.keys())[:5]
+                    if var_names:
+                        label += "<br><i>" + "</i><br><i>".join(var_names[:5]) + "</i>"
+                        if len(mod._variables) > 5:
+                            label += f"<br><i>+{len(mod._variables) - 5} more</i>"
                 lines.append(f'{prefix}{nid}(["{label}"])')
 
     _render_children(0)
@@ -271,17 +105,53 @@ def _generate_mermaid(model) -> str:
                 seen_edges.add(edge_key)
                 lines.append(f"    {src_id} ==>|flow| {rdr_id}")
 
-
+    for rpath, rmod in model.named_modules():
+        for src_mod in getattr(rmod, "_data_dependencies", []):
+            src_info = module_index.get(id(src_mod))
+            if src_info is None:
+                continue
+            spath, _ = src_info
+            rdr_path = rpath if rpath else ""
+            if not spath or not rdr_path:
+                continue
+            src_id = _node_id(spath)
+            rdr_id = _node_id(rdr_path)
+            if src_id == rdr_id or src_id == "root" or rdr_id == "root":
+                continue
+            edge_key = (src_id, rdr_id, "data")
+            if edge_key not in seen_edges:
+                seen_edges.add(edge_key)
+                lines.append(f"    {src_id} -.->|data| {rdr_id}")
 
     return "\n".join(lines)
+
+
+def render_kroki_png(mermaid_code: str, output_path: str):
+    url = "https://kroki.io/mermaid/png"
+    data = mermaid_code.encode("utf-8")
+    headers = {
+        "Content-Type": "text/plain",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+    }
+    req = urllib.request.Request(url, data=data, headers=headers)
+    try:
+        with urllib.request.urlopen(req) as response:
+            with open(output_path, "wb") as f:
+                f.write(response.read())
+        print(f"Saved mermaid graph png via Kroki to {output_path}")
+    except Exception as e:
+        print(f"Failed to render mermaid graph via Kroki: {e}")
 
 
 def save_module_graph_report(model, path_prefix="module_graph", show_vars=True):
     png_path = f"{path_prefix}.png"
     md_path = f"{path_prefix}.md"
 
-    fig = plot_module_graph(model, show_vars=show_vars, save_path=png_path)
-    plt.close(fig)
+    # Generate mermaid code
+    mermaid_code = _generate_mermaid(model, show_vars=show_vars)
+
+    # Render PNG using Kroki
+    render_kroki_png(mermaid_code, png_path)
 
     dep_lines = []
     flow_lines = []
@@ -305,6 +175,15 @@ def save_module_graph_report(model, path_prefix="module_graph", show_vars=True):
                         flow_lines.append(f"  - `{src_name}` → `{rdr_name}` flow")
                     break
 
+        for src_mod in getattr(rmod, "_data_dependencies", []):
+            for spath, smod in model.named_modules():
+                if smod is src_mod:
+                    src_name = spath if spath else type(smod).__name__
+                    rdr_name = rpath if rpath else type(rmod).__name__
+                    if src_name != rdr_name:
+                        flow_lines.append(f"  - `{src_name}` -.-> `{rdr_name}` data lookup")
+                    break
+
     module_list = []
     for path, mod in model.named_modules():
         short = path.split(".")[-1] if path else type(mod).__name__
@@ -315,8 +194,6 @@ def save_module_graph_report(model, path_prefix="module_graph", show_vars=True):
         module_list.append(
             f"| `{short}` | `{path if path else '(root)'}` | `{v_str}` |"
         )
-
-    mermaid_code = _generate_mermaid(model)
 
     deps_section = ""
     if dep_lines:

@@ -32,14 +32,14 @@ class ConcentratorConfig(BaseDualStockpileConfig):
     Attribute: Ore Grade (%)
     """
 
-    mean_ore_fraction: float = 30.0
-    std_dev_ore_fraction: float = 5.0
+    mean_ore_fraction: float = 0.30
+    std_dev_ore_fraction: float = 0.05
 
     # Generator Parameters
     min_ore_mass: float = 30000.0
     max_ore_mass: float = 50000.0
     prob_new_facies: float = 0.3  # NOTE Arena example incorrectly set this to 30.
-    variation_same_facies: float = 1.0
+    variation_same_facies: float = 0.01
 
     # Milling rates specific to the Concentrator paper
     mode_a_ore1_milling_rate: float = 3600.0

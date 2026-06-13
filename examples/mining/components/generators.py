@@ -1,45 +1,49 @@
 import random
-import numpy as np
-
 from drs.module import drs
 from drs.flow import Flow
-from .config import ConcentratorConfig
 
 
-class StochasticFaciesGradeGenerator(drs.DataSource):
-    """Random facies-based ore_fraction generation for the Concentrator model."""
-
-    def __init__(self, config: ConcentratorConfig):
+class StochasticFaciesGenerator(drs.DataSource):
+    """
+    Generates autocorrelated ore fractions using a facies model.
+    Decoupled from physical mass generation.
+    """
+    def __init__(
+        self, 
+        mean_fraction: float, 
+        std_dev: float, 
+        prob_new_facies: float = 0.3, 
+        variation_same_facies: float = 0.05
+    ):
         super().__init__()
-        self.config = config
+        self.mean_fraction = mean_fraction
+        self.std_dev = std_dev
+        self.prob_new_facies = prob_new_facies
+        self.variation_same_facies = variation_same_facies
+        
         self.next_is_new_facies = True
-        self.current_ore_fraction = config.mean_ore_fraction
+        self.current_fraction = mean_fraction
         self.first_call = True
 
     def forward(self):
         return Flow(value=next(self))
 
     def __next__(self) -> drs.DataPoint:
-        c = self.config
-
         if self.first_call:
             self.first_call = False
-            return drs.DataPoint(mass=40000.0, ore_fraction=c.mean_ore_fraction)
-
-        mass = random.uniform(c.min_ore_mass, c.max_ore_mass)
+            return drs.DataPoint(ore1_frac=self.mean_fraction)
 
         if self.next_is_new_facies:
-            if c.std_dev_ore_fraction != 0:
-                ore_fraction = random.gauss(c.mean_ore_fraction, c.std_dev_ore_fraction)
+            if self.std_dev != 0:
+                fraction = random.gauss(self.mean_fraction, self.std_dev)
             else:
-                ore_fraction = c.mean_ore_fraction
+                fraction = self.mean_fraction
         else:
-            ore_fraction = self.current_ore_fraction + c.variation_same_facies * random.uniform(-1, 1)
+            fraction = self.current_fraction + self.variation_same_facies * random.uniform(-1, 1)
 
-        self.current_ore_fraction = max(ore_fraction, 0.0)
-        self.next_is_new_facies = random.random() <= c.prob_new_facies
+        # Clip fraction cleanly between 0 and 1
+        self.current_fraction = max(0.0, min(1.0, fraction))
+        self.next_is_new_facies = random.random() <= self.prob_new_facies
 
-        return drs.DataPoint(mass=mass, ore_fraction=self.current_ore_fraction)
-
-
+        return drs.DataPoint(ore1_frac=self.current_fraction)
 

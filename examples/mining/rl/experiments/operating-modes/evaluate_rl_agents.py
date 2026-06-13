@@ -116,7 +116,7 @@ def plot_rl_monte_carlo_throughput(
     for sigma in sigmas:
         sim_config = ConcentratorConfig(
             replication_length=99999.0,
-            std_dev_ore_fraction=sigma,
+            std_dev_ore_fraction=sigma / 100.0,
             target_ore_stock_level=total_stockpile_level,
         )
         config = RLMineConfig(sim_config=sim_config)

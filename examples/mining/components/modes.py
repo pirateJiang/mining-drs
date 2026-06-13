@@ -8,11 +8,19 @@ class RequireDecision(Exception):
 
 
 _MODE_IDS = {
-    "MODE_A": 0, "MODE_A_CONTINGENCY": 1, "MODE_A_MINE_SURGING": 2,
-    "MODE_B": 3, "MODE_B_CONTINGENCY": 4, "MODE_B_MINE_SURGING": 5,
+    "MODE_A": 0,
+    "MODE_A_CONTINGENCY": 1,
+    "MODE_A_MINE_SURGING": 2,
+    "MODE_B": 3,
+    "MODE_B_CONTINGENCY": 4,
+    "MODE_B_MINE_SURGING": 5,
     "SHUTDOWN": 6,
-    "MODE_C": 7, "MODE_C_CONTINGENCY": 8, "MODE_C_MINE_SURGING": 9,
-    "MODE_D": 10, "MODE_D_CONTINGENCY": 11, "MODE_D_MINE_SURGING": 12,
+    "MODE_C": 7,
+    "MODE_C_CONTINGENCY": 8,
+    "MODE_C_MINE_SURGING": 9,
+    "MODE_D": 10,
+    "MODE_D_CONTINGENCY": 11,
+    "MODE_D_MINE_SURGING": 12,
 }
 
 
@@ -85,11 +93,19 @@ class OperatingMode:
                 extraction = (ore1 / (1.0 - p)) if (1.0 - p) > 0 else 0.0
             else:
                 extraction = (ore2 / p) if p > 0 else 0.0
-            return TargetRates(extraction_rate=extraction, ore1_milling_rate=ore1, ore2_milling_rate=ore2)
+            return TargetRates(
+                extraction_rate=extraction,
+                ore1_milling_rate=ore1,
+                ore2_milling_rate=ore2,
+            )
 
-        return TargetRates(extraction_rate=ore1 + ore2, ore1_milling_rate=ore1, ore2_milling_rate=ore2)
+        return TargetRates(
+            extraction_rate=ore1 + ore2, ore1_milling_rate=ore1, ore2_milling_rate=ore2
+        )
 
-    def check_end_conditions(self, model) -> Union[Optional["OperatingMode"], RequireDecision]:
+    def check_end_conditions(
+        self, model
+    ) -> Union[Optional["OperatingMode"], RequireDecision]:
         ctrl = model.controller
         n = self._name
 
@@ -121,8 +137,15 @@ class OperatingMode:
             if base == "MODE_D" and ore1 <= config.stockout_epsilon:
                 ctrl.reset_contingency_timer()
                 return MODES[base + "_CONTINGENCY"]
-            model.controller.total_system_ore_mass.lower_threshold = config.target_ore_stock_level
-            if model.controller.total_system_ore_mass.value <= config.target_ore_stock_level + 1e-6:
+            model.controller.total_system_ore_mass.lower_threshold = (
+                config.target_ore_stock_level
+            )
+
+            # TODO: noticing that after surging we sometimes end on a threshold less than the target. What does the excel sheet do?
+            if (
+                model.controller.total_system_ore_mass.value
+                <= config.target_ore_stock_level + 1e-6
+            ):
                 return RequireDecision()
             return None
 

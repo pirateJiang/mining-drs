@@ -14,7 +14,7 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 import types
 
-from examples.mining.components import ConcentratorConfig, ConcentratorModel
+from examples.mining.components import ConcentratorConfig, ConcentratorModel, ActiveFleetConcentratorModel
 from drs import DRSEngine
 
 
@@ -28,7 +28,7 @@ def evaluate_throughput(config: ConcentratorConfig, N: int) -> tuple[float, floa
     for idx in range(N):
         # By setting the replication length very high we let it hit the 6.6M extraction condition
         # and then the model automatically terminates
-        sim = ConcentratorModel(config)
+        sim = ActiveFleetConcentratorModel(config)
 
         engine = DRSEngine(sim)
 
@@ -53,7 +53,7 @@ def evaluate_throughput(config: ConcentratorConfig, N: int) -> tuple[float, floa
         active_time = total_time - sim.controller.cumulative_time_shutdown.value
         if active_time > 0:
             throughput = (
-                sim.mine.cumulative_extracted_mass.value
+                (sim.face1.cumulative_extracted_mass.value + sim.face2.cumulative_extracted_mass.value)
                 - sim.config.ore_to_be_extracted_during_warming_period
             ) / active_time
             throughputs.append(throughput)
@@ -131,7 +131,7 @@ if __name__ == "__main__":
         std_dev_ore_fraction=args.std_dev_ore_fraction,
         prob_new_facies=0.3,
     )
-    sim = ConcentratorModel(config, enable_telemetry=True)
+    sim = ActiveFleetConcentratorModel(config, enable_telemetry=True)
 
     # Generates an interactive dashboard spanning all operating modes
     from examples.mining.components.modes import MODES
@@ -175,7 +175,9 @@ if __name__ == "__main__":
     import pandas as pd
 
     dt = df["time"].diff().fillna(0)
-    actual_extraction_step = df["cumulative_extracted_mass"].diff().fillna(0)
+    actual_extraction_step = (
+        df["face1_extracted_mass"] + df["face2_extracted_mass"]
+    ).diff().fillna(0)
     ideal_extraction_step = dt * 6000.0
     step_deficit = (ideal_extraction_step - actual_extraction_step).clip(lower=0)
 
@@ -306,13 +308,11 @@ if __name__ == "__main__":
             },
         },
         {
-            "func": plot_dual_axis_step,
+            "func": plot_time_series,
             "kwargs": {
-                "y1_col": "MassOfCurrentParcel",
-                "y2_col": "CurrentParcelRoutingFraction",
-                "y1_label": "Parcel Mass (tons)",
-                "y2_label": "Grade (% Ore 2)",
-                "title": "Current Parcel Properties",
+                "y_columns": ["face1_alloc", "face2_alloc", "ore2_ratio"],
+                "title": "Active Fleet Allocation & Stockpile Ratio",
+                "is_step": True,
             },
         },
         {

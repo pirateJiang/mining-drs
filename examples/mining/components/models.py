@@ -3,20 +3,16 @@ from drs.telemetry import Telemetry
 
 from .config import BaseDualStockpileConfig, ConcentratorConfig
 from .stockpiles import Stockpile
-from .supply_chain import (
-    BaseMineFace,
-    BaseFleetLogistics,
-    BaseMetallurgicalPlant,
-    ConcentratorMineFace,
-    ConcentratorFleet,
-    ConcentratorPlant,
-)
+from .mine_face import BaseMineFace, ConcentratorMineFace, ContinuousMineFace
+from .fleet import ContinuousFleetLogistics
+from .plant import BaseMetallurgicalPlant, ConcentratorPlant
 from .controllers import (
     BaseBlendingController,
     ConcentratorController,
+    ActiveFleetConcentratorController,
 )
 from .generators import (
-    StochasticFaciesGradeGenerator,
+    StochasticFaciesGenerator,
 )
 
 
@@ -28,7 +24,7 @@ class BaseBlendingModel(drs.Module):
 
         self.generator = None
         self.mine: BaseMineFace = None
-        self.fleet: BaseFleetLogistics = None
+        self.fleet: ContinuousFleetLogistics = None
         self.plant: BaseMetallurgicalPlant = None
         self.controller: BaseBlendingController = None
 
@@ -137,9 +133,9 @@ class ConcentratorModel(BaseBlendingModel):
         super().__init__(config, enable_telemetry)
 
         self.mine = ConcentratorMineFace(self.config)
-        self.fleet = ConcentratorFleet(self.config)
+        self.fleet = ContinuousFleetLogistics()
 
-        initial_fraction = self.config.mean_ore_fraction / 100
+        initial_fraction = self.config.mean_ore_fraction
         initial_mass1 = (1 - initial_fraction) * self.config.target_ore_stock_level
         self.ore1_stock = Stockpile(
             name="Ore1Stock",
@@ -169,3 +165,83 @@ class ConcentratorModel(BaseBlendingModel):
         )
 
         self.setup_telemetry()
+
+
+class ActiveFleetConcentratorModel(BaseBlendingModel):
+    def __init__(self, config: ConcentratorConfig, enable_telemetry: bool = False):
+        super().__init__(config, enable_telemetry)
+        
+        gen1 = StochasticFaciesGenerator(mean_fraction=0.80, std_dev=0.10)
+        gen2 = StochasticFaciesGenerator(mean_fraction=0.30, std_dev=0.03)
+        
+        self.face1 = ContinuousMineFace(config, face_id=1, generator=gen1)
+        self.face2 = ContinuousMineFace(config, face_id=2, generator=gen2)
+        self.fleet = ContinuousFleetLogistics()
+        
+        # Stockpiles
+        initial_mass1 = 0.6 * config.target_ore_stock_level
+        self.ore1_stock = Stockpile(
+            name="Ore1Stock",
+            expected_attributes=["contained_grade_mass"],
+            initial_mass=initial_mass1,
+            initial_attributes={"contained_grade_mass": initial_mass1}
+        )
+        initial_mass2 = 0.4 * config.target_ore_stock_level
+        self.ore2_stock = Stockpile(
+            name="Ore2Stock",
+            expected_attributes=["contained_grade_mass"],
+            initial_mass=initial_mass2,
+            initial_attributes={"contained_grade_mass": 0}
+        )
+        
+        self.plant = ConcentratorPlant(config, None, self.fleet, self.ore1_stock, self.ore2_stock)
+        
+        class DummyMine:
+            def __init__(self, parent):
+                self.parent = parent
+            @property
+            def cumulative_extracted_mass(self):
+                return self.parent.cumulative_extracted_mass
+                
+        self.controller = ActiveFleetConcentratorController(config, DummyMine(self), self.fleet, self.plant)
+        
+        self.setup_telemetry()
+        if self.enable_telemetry:
+            self.telemetry.register_metric("face1_alloc", lambda t,m,s,h: m.face1.allocation_fraction.value)
+            self.telemetry.register_metric("face2_alloc", lambda t,m,s,h: m.face2.allocation_fraction.value)
+            self.telemetry.register_metric("ore2_ratio", lambda t,m,s,h: m.ore2_stock.current_mass.value / max(1e-6, m.ore1_stock.current_mass.value + m.ore2_stock.current_mass.value))
+            self.telemetry.register_metric("face1_extracted_mass", lambda t,m,s,h: m.face1.cumulative_extracted_mass.value)
+            self.telemetry.register_metric("face2_extracted_mass", lambda t,m,s,h: m.face2.cumulative_extracted_mass.value)
+
+    def setup_telemetry(self):
+        if self.enable_telemetry:
+            self.telemetry = Telemetry(self)
+            self.register_post_step_hook(self.telemetry.snapshot)
+            self.telemetry.register_metric("Campaign_Shutdown", lambda t, m, s, h: m.controller.current_campaign_duration.value)
+            self.telemetry.register_metric("Contingency", lambda t, m, s, h: m.controller.current_contingency_duration.value)
+
+    @property
+    def cumulative_extracted_mass(self):
+        class DummyMass:
+            def __init__(self, parent):
+                self.parent = parent
+            @property
+            def value(self):
+                return self.parent.face1.cumulative_extracted_mass.value + self.parent.face2.cumulative_extracted_mass.value
+        return DummyMass(self)
+
+    def forward(self):
+        self.global_time.rate = 1.0
+        self.controller()
+        ore1_flow, ore2_flow = self.fleet(self.face1(self.controller.target_face1_allocation), self.face2(self.controller.target_face2_allocation))
+        out1 = self.ore1_stock(self.controller.target_stock1_outflow_rate, inflow=ore1_flow)
+        out2 = self.ore2_stock(self.controller.target_stock2_outflow_rate, inflow=ore2_flow)
+        self.plant(out1, out2)
+        
+        self.controller.total_system_ore_mass.rate = (
+            self.ore1_stock.current_mass.rate + self.ore2_stock.current_mass.rate
+        )
+        
+    def is_terminating_condition_met(self):
+        total_extracted = self.face1.cumulative_extracted_mass.value + self.face2.cumulative_extracted_mass.value
+        return total_extracted >= self.config.total_ore_to_extract

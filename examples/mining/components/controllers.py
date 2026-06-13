@@ -2,14 +2,9 @@ from drs.module import drs
 from drs.flow import Flow
 from .modes import OperatingMode, RequireDecision
 from .config import ConcentratorConfig
-from .supply_chain import (
-    BaseMineFace,
-    BaseFleetLogistics,
-    BaseMetallurgicalPlant,
-    ConcentratorMineFace,
-    ConcentratorFleet,
-    ConcentratorPlant,
-)
+from .mine_face import BaseMineFace, ConcentratorMineFace
+from .fleet import ContinuousFleetLogistics
+from .plant import BaseMetallurgicalPlant, ConcentratorPlant
 from .modes import MODES
 
 
@@ -29,7 +24,7 @@ class BaseBlendingController(drs.Module):
         self,
         config,
         mine: BaseMineFace,
-        fleet: BaseFleetLogistics,
+        fleet: ContinuousFleetLogistics,
         plant: BaseMetallurgicalPlant,
     ):
         super().__init__()
@@ -38,8 +33,12 @@ class BaseBlendingController(drs.Module):
         self.fleet = fleet
         self.plant = plant
 
-        self.active_operating_mode = drs.Variable("active_operating_mode", MODES["MODE_A"])
-        self.total_system_ore_mass = drs.Variable("total_system_ore_mass", initial_value=config.target_ore_stock_level)
+        self.active_operating_mode = drs.Variable(
+            "active_operating_mode", MODES["MODE_A"]
+        )
+        self.total_system_ore_mass = drs.Level(
+            "total_system_ore_mass", initial_value=config.target_ore_stock_level
+        )
 
         self.current_campaign_duration = drs.Timer(
             "current_campaign_duration", initial_value=0.0
@@ -47,25 +46,35 @@ class BaseBlendingController(drs.Module):
         self.current_contingency_duration = drs.Timer(
             "current_contingency_duration", initial_value=0.0
         )
-        self.cumulative_time_mode_a = drs.Timer("cumulative_time_mode_a", initial_value=0.0)
+        self.cumulative_time_mode_a = drs.Timer(
+            "cumulative_time_mode_a", initial_value=0.0
+        )
         self.cumulative_time_mode_a_contingency = drs.Timer(
             "cumulative_time_mode_a_contingency", initial_value=0.0
         )
         self.cumulative_time_mode_a_surging = drs.Timer(
             "cumulative_time_mode_a_surging", initial_value=0.0
         )
-        self.cumulative_time_mode_b = drs.Timer("cumulative_time_mode_b", initial_value=0.0)
+        self.cumulative_time_mode_b = drs.Timer(
+            "cumulative_time_mode_b", initial_value=0.0
+        )
         self.cumulative_time_mode_b_contingency = drs.Timer(
             "cumulative_time_mode_b_contingency", initial_value=0.0
         )
         self.cumulative_time_mode_b_surging = drs.Timer(
             "cumulative_time_mode_b_surging", initial_value=0.0
         )
-        self.cumulative_time_shutdown = drs.Timer("cumulative_time_shutdown", initial_value=0.0)
+        self.cumulative_time_shutdown = drs.Timer(
+            "cumulative_time_shutdown", initial_value=0.0
+        )
 
         self.target_mine_mass_rate = drs.Variable("target_mine_mass_rate", 0.0)
-        self.target_stock1_outflow_rate = drs.Variable("target_stock1_outflow_rate", 0.0)
-        self.target_stock2_outflow_rate = drs.Variable("target_stock2_outflow_rate", 0.0)
+        self.target_stock1_outflow_rate = drs.Variable(
+            "target_stock1_outflow_rate", 0.0
+        )
+        self.target_stock2_outflow_rate = drs.Variable(
+            "target_stock2_outflow_rate", 0.0
+        )
 
     def is_campaign_complete(self) -> bool:
         c = self.config
@@ -141,11 +150,15 @@ class BaseBlendingController(drs.Module):
             getattr(self, timer_attr).rate = 1.0
         self.current_campaign_duration.rate = 1.0
         self.current_campaign_duration.upper_threshold = (
-            c.duration_of_shutdowns if m == "SHUTDOWN" else c.duration_of_production_campaigns
+            c.duration_of_shutdowns
+            if m == "SHUTDOWN"
+            else c.duration_of_production_campaigns
         )
         if m in self._CONTINGENCY_MODES:
             self.current_contingency_duration.rate = 1.0
-            self.current_contingency_duration.upper_threshold = c.duration_of_contingency_segments
+            self.current_contingency_duration.upper_threshold = (
+                c.duration_of_contingency_segments
+            )
 
     def _choose_next_campaign_mode(self, config):
         ore2 = self.parent.ore2_stock.current_mass.value
@@ -184,10 +197,35 @@ class ConcentratorController(BaseBlendingController):
         self,
         config: ConcentratorConfig,
         mine: ConcentratorMineFace,
-        fleet: ConcentratorFleet,
+        fleet: ContinuousFleetLogistics,
         plant: ConcentratorPlant,
     ):
         super().__init__(config, mine, fleet, plant)
 
 
+class ActiveFleetConcentratorController(ConcentratorController):
+    def __init__(self, config, mine, fleet, plant):
+        super().__init__(config, mine, fleet, plant)
+        self.target_face1_allocation = drs.Variable("target_face1_allocation", 0.5)
+        self.target_face2_allocation = drs.Variable("target_face2_allocation", 0.5)
 
+    def forward(self):
+        # Run standard Mode A/B and contingency logic first
+        super().forward()
+
+        # Calculate stockpile ratio
+        stock1 = self.parent.ore1_stock.current_mass.value
+        stock2 = self.parent.ore2_stock.current_mass.value
+        total_stock = stock1 + stock2
+        ore2_ratio = stock2 / total_stock if total_stock > 1e-6 else 0.40
+
+        # Protect 40% Ore 2 Target Ratio via face allocation
+        if ore2_ratio < 0.38:
+            self.target_face1_allocation.value = 0.20  # Face 1 (High Ore 1) gets 20%
+            self.target_face2_allocation.value = 0.80  # Face 2 (High Ore 2) gets 80%
+        elif ore2_ratio > 0.42:
+            self.target_face1_allocation.value = 0.80
+            self.target_face2_allocation.value = 0.20
+        else:
+            self.target_face1_allocation.value = 0.50
+            self.target_face2_allocation.value = 0.50

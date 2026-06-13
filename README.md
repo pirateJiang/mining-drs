@@ -221,7 +221,7 @@ for parcel in source:
 
 DataSources compose naturally with the engine — they are `drs.Module` subclasses, so they appear in `named_modules()`, `variables()`, and the visualization system. The mining example ships with two built-in sources:
 
-- `StochasticFaciesGradeGenerator` — random facies-based grade generation
+- `StochasticFaciesGenerator` — random facies-based grade generation
 - `CyanideGeostatisticalBlockGenerator` — conditional simulation block models with Gaussian Sequential Simulation
 
 5. Conventions & Best Practices

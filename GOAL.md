@@ -160,7 +160,7 @@ class BaseBlendingModel(drs.Module):
 
 This ensures each parallel replica produces an identical sequence given the same seed, enabling deterministic Monte Carlo.
 
-**Status:** 🔄 Partially implemented. `StochasticFaciesGradeGenerator` accepts a seed, but the pattern is not enforced across all stochastic components (fleet drive times, etc.).
+**Status:** 🔄 Partially implemented. `StochasticFaciesGenerator` accepts a seed, but the pattern is not enforced across all stochastic components (fleet drive times, etc.).
 
 ### 4. The UI Blueprint Extraction (Symbolic "Dry Run")
 

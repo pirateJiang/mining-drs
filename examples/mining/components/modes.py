@@ -68,7 +68,7 @@ class OperatingMode:
 
     def is_valid_start(self, model) -> bool:
         n = self._name
-        ore2 = model.true_ore2_stock.mass.value
+        ore2 = model.ore2_stock.current_mass.value
         if n in ("MODE_A", "MODE_C"):
             return ore2 >= model.plant.config.critical_ore2_level
         if n in ("MODE_B", "MODE_D"):
@@ -80,7 +80,7 @@ class OperatingMode:
         ore1, ore2 = _read_rates(self._name, config)
 
         if "_MINE_SURGING" in self._name:
-            p = model.fleet.fraction_to_ore2.value
+            p = model.fleet.stockpile2_routing_fraction.value
             if self._name in ("MODE_A_MINE_SURGING", "MODE_C_MINE_SURGING"):
                 extraction = (ore1 / (1.0 - p)) if (1.0 - p) > 0 else 0.0
             else:
@@ -100,8 +100,8 @@ class OperatingMode:
             return None
 
         config = ctrl.config
-        ore1 = model.true_ore1_stock.mass.value
-        ore2 = model.true_ore2_stock.mass.value
+        ore1 = model.ore1_stock.current_mass.value
+        ore2 = model.ore2_stock.current_mass.value
 
         if "_CONTINGENCY" in n:
             if ctrl.is_contingency_complete():
@@ -121,8 +121,8 @@ class OperatingMode:
             if base == "MODE_D" and ore1 <= config.stockout_epsilon:
                 ctrl.reset_contingency_timer()
                 return MODES[base + "_CONTINGENCY"]
-            model.plant.true_ore_stock.lower_threshold = config.target_ore_stock_level
-            if model.plant.true_ore_stock.value <= config.target_ore_stock_level + 1e-6:
+            model.controller.total_system_ore_mass.lower_threshold = config.target_ore_stock_level
+            if model.controller.total_system_ore_mass.value <= config.target_ore_stock_level + 1e-6:
                 return RequireDecision()
             return None
 

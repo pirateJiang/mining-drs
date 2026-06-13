@@ -49,7 +49,7 @@ class Expression:
         if self.op == "ne":
             return l_val != r_val
         if self.op == "pow":
-            return l_val ** r_val
+            return l_val**r_val
         return 0.0
 
     def get_sources(self) -> list:
@@ -61,9 +61,17 @@ class Expression:
 
     def get_equation(self) -> str:
         op_chars = {
-            "add": "+", "sub": "-", "mul": "*", "div": "/",
-            "gt": ">", "lt": "<", "ge": ">=", "le": "<=",
-            "eq": "==", "ne": "!=", "pow": "**",
+            "add": "+",
+            "sub": "-",
+            "mul": "*",
+            "div": "/",
+            "gt": ">",
+            "lt": "<",
+            "ge": ">=",
+            "le": "<=",
+            "eq": "==",
+            "ne": "!=",
+            "pow": "**",
         }
         unary_chars = {"neg": "-", "pos": "+", "abs": "|"}
 
@@ -91,26 +99,62 @@ class Expression:
             f"Use `.value` for immediate evaluation or `drs.Where()` for symbolic branching."
         )
 
-    def __neg__(self): return Expression("neg", self, None)
-    def __pos__(self): return Expression("pos", self, None)
-    def __abs__(self): return Expression("abs", self, None)
+    def __neg__(self):
+        return Expression("neg", self, None)
 
-    def __add__(self, other): return Expression("add", self, other)
-    def __sub__(self, other): return Expression("sub", self, other)
-    def __mul__(self, other): return Expression("mul", self, other)
-    def __truediv__(self, other): return Expression("div", self, other)
-    def __radd__(self, other): return Expression("add", other, self)
-    def __rsub__(self, other): return Expression("sub", other, self)
-    def __rmul__(self, other): return Expression("mul", other, self)
-    def __rtruediv__(self, other): return Expression("div", other, self)
-    def __gt__(self, other): return Expression("gt", self, other)
-    def __lt__(self, other): return Expression("lt", self, other)
-    def __ge__(self, other): return Expression("ge", self, other)
-    def __le__(self, other): return Expression("le", self, other)
-    def __eq__(self, other): return Expression("eq", self, other)
-    def __ne__(self, other): return Expression("ne", self, other)
-    def __pow__(self, other): return Expression("pow", self, other)
-    def __rpow__(self, other): return Expression("pow", other, self)
+    def __pos__(self):
+        return Expression("pos", self, None)
+
+    def __abs__(self):
+        return Expression("abs", self, None)
+
+    def __add__(self, other):
+        return Expression("add", self, other)
+
+    def __sub__(self, other):
+        return Expression("sub", self, other)
+
+    def __mul__(self, other):
+        return Expression("mul", self, other)
+
+    def __truediv__(self, other):
+        return Expression("div", self, other)
+
+    def __radd__(self, other):
+        return Expression("add", other, self)
+
+    def __rsub__(self, other):
+        return Expression("sub", other, self)
+
+    def __rmul__(self, other):
+        return Expression("mul", other, self)
+
+    def __rtruediv__(self, other):
+        return Expression("div", other, self)
+
+    def __gt__(self, other):
+        return Expression("gt", self, other)
+
+    def __lt__(self, other):
+        return Expression("lt", self, other)
+
+    def __ge__(self, other):
+        return Expression("ge", self, other)
+
+    def __le__(self, other):
+        return Expression("le", self, other)
+
+    def __eq__(self, other):
+        return Expression("eq", self, other)
+
+    def __ne__(self, other):
+        return Expression("ne", self, other)
+
+    def __pow__(self, other):
+        return Expression("pow", self, other)
+
+    def __rpow__(self, other):
+        return Expression("pow", other, self)
 
 
 class Variable:
@@ -175,17 +219,28 @@ class Variable:
             return Expression(op, self, other)
         r_val = other._sim_value() if isinstance(other, Variable) else other
         l_val = self._sim_value()
-        if op == "add": return l_val + r_val
-        if op == "sub": return l_val - r_val
-        if op == "mul": return l_val * r_val
-        if op == "div": return l_val / r_val if r_val != 0 else 0.0
-        if op == "gt": return l_val > r_val
-        if op == "lt": return l_val < r_val
-        if op == "ge": return l_val >= r_val
-        if op == "le": return l_val <= r_val
-        if op == "eq": return l_val == r_val
-        if op == "ne": return l_val != r_val
-        if op == "pow": return l_val ** r_val
+        if op == "add":
+            return l_val + r_val
+        if op == "sub":
+            return l_val - r_val
+        if op == "mul":
+            return l_val * r_val
+        if op == "div":
+            return l_val / r_val if r_val != 0 else 0.0
+        if op == "gt":
+            return l_val > r_val
+        if op == "lt":
+            return l_val < r_val
+        if op == "ge":
+            return l_val >= r_val
+        if op == "le":
+            return l_val <= r_val
+        if op == "eq":
+            return l_val == r_val
+        if op == "ne":
+            return l_val != r_val
+        if op == "pow":
+            return l_val**r_val
         return NotImplemented
 
     def _rop(self, op: str, other):
@@ -196,11 +251,16 @@ class Variable:
             return Expression(op, other, self)
         l_val = other._sim_value() if isinstance(other, Variable) else other
         r_val = self._sim_value()
-        if op == "add": return l_val + r_val
-        if op == "sub": return l_val - r_val
-        if op == "mul": return l_val * r_val
-        if op == "div": return l_val / r_val if r_val != 0 else 0.0
-        if op == "pow": return l_val ** r_val
+        if op == "add":
+            return l_val + r_val
+        if op == "sub":
+            return l_val - r_val
+        if op == "mul":
+            return l_val * r_val
+        if op == "div":
+            return l_val / r_val if r_val != 0 else 0.0
+        if op == "pow":
+            return l_val**r_val
         return NotImplemented
 
     def __neg__(self):
@@ -221,22 +281,53 @@ class Variable:
             return Expression("abs", self, None)
         return abs(self._sim_value())
 
-    def __add__(self, other): return self._op("add", other)
-    def __sub__(self, other): return self._op("sub", other)
-    def __mul__(self, other): return self._op("mul", other)
-    def __truediv__(self, other): return self._op("div", other)
-    def __radd__(self, other): return self._rop("add", other)
-    def __rsub__(self, other): return self._rop("sub", other)
-    def __rmul__(self, other): return self._rop("mul", other)
-    def __rtruediv__(self, other): return self._rop("div", other)
-    def __gt__(self, other): return self._op("gt", other)
-    def __lt__(self, other): return self._op("lt", other)
-    def __ge__(self, other): return self._op("ge", other)
-    def __le__(self, other): return self._op("le", other)
-    def __eq__(self, other): return self._op("eq", other)
-    def __ne__(self, other): return self._op("ne", other)
-    def __pow__(self, other): return self._op("pow", other)
-    def __rpow__(self, other): return self._rop("pow", other)
+    def __add__(self, other):
+        return self._op("add", other)
+
+    def __sub__(self, other):
+        return self._op("sub", other)
+
+    def __mul__(self, other):
+        return self._op("mul", other)
+
+    def __truediv__(self, other):
+        return self._op("div", other)
+
+    def __radd__(self, other):
+        return self._rop("add", other)
+
+    def __rsub__(self, other):
+        return self._rop("sub", other)
+
+    def __rmul__(self, other):
+        return self._rop("mul", other)
+
+    def __rtruediv__(self, other):
+        return self._rop("div", other)
+
+    def __gt__(self, other):
+        return self._op("gt", other)
+
+    def __lt__(self, other):
+        return self._op("lt", other)
+
+    def __ge__(self, other):
+        return self._op("ge", other)
+
+    def __le__(self, other):
+        return self._op("le", other)
+
+    def __eq__(self, other):
+        return self._op("eq", other)
+
+    def __ne__(self, other):
+        return self._op("ne", other)
+
+    def __pow__(self, other):
+        return self._op("pow", other)
+
+    def __rpow__(self, other):
+        return self._rop("pow", other)
 
 
 class Level(Variable):
@@ -257,6 +348,11 @@ class Level(Variable):
 
     @rate.setter
     def rate(self, val):
+        current_actor = ExecutionContext.get_current()
+        if current_actor is not None and current_actor is not self._owner:
+            if hasattr(current_actor, "_record_incoming_edge"):
+                current_actor._record_incoming_edge(self)
+
         if isinstance(val, tuple):
             if len(val) == 3:
                 self._rate, self.lower_threshold, self.upper_threshold = val

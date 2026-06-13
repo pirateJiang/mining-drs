@@ -7,64 +7,65 @@
 | Name | Path | Variables |
 |------|------|-----------|
 | `ConcentratorModel` | `(root)` | `global_time` |
-| `generator` | `generator` | `—` |
-| `mine` | `mine` | `true_current_parcel_mass, true_ore_extraction, true_ore_extracted_from_current_parcel, true_current_parcel_grade` |
-| `fleet` | `fleet` | `fraction_to_ore2` |
-| `true_ore1_stock` | `true_ore1_stock` | `mass, actual_outflow, grade` |
-| `true_ore2_stock` | `true_ore2_stock` | `mass, actual_outflow, grade` |
-| `plant` | `plant` | `true_ore_stock, true_total_ore_milled` |
-| `controller` | `controller` | `current_mode, time_executed_campaign_shutdown, time_executed_contingency, time_mode_a, time_mode_a_contingency, +8 more` |
+| `mine` | `mine` | `active_parcel_initial_mass, cumulative_extracted_mass, parcel_extracted_mass, active_parcel_grade` |
+| `generator` | `mine.generator` | `—` |
+| `fleet` | `fleet` | `stockpile2_routing_fraction` |
+| `ore1_stock` | `ore1_stock` | `current_mass, actual_outflow_rate, contained_grade_mass` |
+| `ore2_stock` | `ore2_stock` | `current_mass, actual_outflow_rate, contained_grade_mass` |
+| `plant` | `plant` | `cumulative_milled_mass` |
+| `controller` | `controller` | `active_operating_mode, total_system_ore_mass, current_campaign_duration, current_contingency_duration, cumulative_time_mode_a, +9 more` |
 
 ## Flowchart
 
 ```mermaid
 flowchart TD
 subgraph root["ConcentratorModel"]
-    generator(["generator"])
-    mine(["mine"])
+    subgraph mine["mine"]
+        mine_generator(["generator"])
+    end
     fleet(["fleet"])
-    true_ore1_stock(["true_ore1_stock"])
-    true_ore2_stock(["true_ore2_stock"])
+    ore1_stock(["ore1_stock"])
+    ore2_stock(["ore2_stock"])
     plant(["plant"])
     controller(["controller"])
 end
-    controller -->|target_extraction_rate| mine
-    mine -->|TrueOreExtraction_Level| plant
-    mine -->|TrueOreExtraction_Level| controller
-    true_ore1_stock -->|TrueOre1Stock_mass| controller
-    true_ore2_stock -->|TrueOre2Stock_mass| controller
-    plant -->|TrueOreStock_Level| controller
-    fleet -->|fraction_to_ore2| controller
+    controller -->|target_mine_mass_rate| mine
+    controller -->|target_stock1_outflow_rate| ore1_stock
+    controller -->|target_stock2_outflow_rate| ore2_stock
+    mine -->|cumulative_extracted_mass| controller
+    plant -->|cumulative_milled_mass| controller
+    ore1_stock -->|Ore1Stock_mass| controller
+    ore2_stock -->|Ore2Stock_mass| controller
+    fleet -->|stockpile2_routing_fraction| controller
     mine ==>|flow| fleet
-    fleet ==>|flow| true_ore1_stock
-    fleet ==>|flow| true_ore2_stock
-    true_ore1_stock ==>|flow| plant
-    true_ore2_stock ==>|flow| plant
+    fleet ==>|flow| ore1_stock
+    fleet ==>|flow| ore2_stock
+    ore1_stock ==>|flow| plant
+    ore2_stock ==>|flow| plant
 ```
 
 ## Data Dependencies (persistent variable reads)
 
 The following read-dependencies were recorded during the simulation. An arrow `A → B` means module B reads a variable owned by module A.
 
-  - `controller` → `ConcentratorModel` reads `target_ore1_mill_rate`
-  - `controller` → `ConcentratorModel` reads `target_ore2_mill_rate`
-  - `controller` → `mine` reads `target_extraction_rate`
-  - `mine` → `plant` reads `TrueOreExtraction_Level`
-  - `mine` → `controller` reads `TrueOreExtraction_Level`
-  - `true_ore1_stock` → `controller` reads `TrueOre1Stock_mass`
-  - `true_ore2_stock` → `controller` reads `TrueOre2Stock_mass`
-  - `plant` → `controller` reads `TrueOreStock_Level`
-  - `fleet` → `controller` reads `fraction_to_ore2`
+  - `controller` → `mine` reads `target_mine_mass_rate`
+  - `controller` → `ore1_stock` reads `target_stock1_outflow_rate`
+  - `controller` → `ore2_stock` reads `target_stock2_outflow_rate`
+  - `mine` → `controller` reads `cumulative_extracted_mass`
+  - `plant` → `controller` reads `cumulative_milled_mass`
+  - `ore1_stock` → `controller` reads `Ore1Stock_mass`
+  - `ore2_stock` → `controller` reads `Ore2Stock_mass`
+  - `fleet` → `controller` reads `stockpile2_routing_fraction`
 
 ## Data Flow (transient)
 
 The following transient flow-edges were recorded during the simulation. An arrow `A → B` means module A returned a `drs.Flow` value that was passed as input to module B.
 
   - `mine` → `fleet` flow
-  - `fleet` → `true_ore1_stock` flow
-  - `fleet` → `true_ore2_stock` flow
-  - `true_ore1_stock` → `plant` flow
-  - `true_ore2_stock` → `plant` flow
+  - `fleet` → `ore1_stock` flow
+  - `fleet` → `ore2_stock` flow
+  - `ore1_stock` → `plant` flow
+  - `ore2_stock` → `plant` flow
 
 ## Visual Graph
 

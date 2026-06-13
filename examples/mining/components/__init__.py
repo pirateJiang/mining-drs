@@ -1,18 +1,16 @@
-from .config import ConcentratorConfig, CyanidationConfig
+from .config import ConcentratorConfig
 from .modes import MODES, OperatingMode, RequireDecision
-from .generators import StochasticFaciesGradeGenerator, CyanideGeostatisticalBlockGenerator
+from .generators import StochasticFaciesGradeGenerator
 from .supply_chain import (
-    ConcentratorMineFace, ConcentratorFleet, ConcentratorPlant,
-    CyanidationMineFace, CyanidationFleet, CyanidationPlant
+    ConcentratorMineFace, ConcentratorFleet, ConcentratorPlant
 )
-from .controllers import ConcentratorController, CyanidationController
-from .models import ConcentratorModel, CyanidationModel
+from .controllers import ConcentratorController
+from .models import ConcentratorModel
 from .stockpiles import Stockpile
 
 __all__ = [
     "BaseBlendingModel",
     "ConcentratorModel",
-    "CyanidationModel",
     
     # Physical modules
     "Stockpile",

@@ -37,7 +37,7 @@ class RL_MineController(ConcentratorController):
             self.reset_contingency_timer()
             return MODES[m.replace("_CONTINGENCY", "")]
 
-        if m.endswith("_MINE_SURGING") and self.plant.true_ore_stock.value <= self.config.target_ore_stock_level:
+        if m.endswith("_MINE_SURGING") and self.plant.ore_stock.value <= self.config.target_ore_stock_level:
             return MODES[m.replace("_MINE_SURGING", "")]
 
         return None

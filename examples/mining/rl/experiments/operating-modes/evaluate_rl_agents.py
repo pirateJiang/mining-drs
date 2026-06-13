@@ -87,18 +87,18 @@ def evaluate_rl_throughput(model, env, seed, device):
     config = env.config
 
     total_time = (
-        sim.controller.time_mode_a.value
-        + sim.controller.time_mode_a_contingency.value
-        + sim.controller.time_mode_a_surging.value
-        + sim.controller.time_mode_b.value
-        + sim.controller.time_mode_b_contingency.value
-        + sim.controller.time_mode_b_surging.value
-        + sim.controller.time_shutdown.value
+        sim.controller.cumulative_time_mode_a.value
+        + sim.controller.cumulative_time_mode_a_contingency.value
+        + sim.controller.cumulative_time_mode_a_surging.value
+        + sim.controller.cumulative_time_mode_b.value
+        + sim.controller.cumulative_time_mode_b_contingency.value
+        + sim.controller.cumulative_time_mode_b_surging.value
+        + sim.controller.cumulative_time_shutdown.value
     )
-    active_time = total_time - sim.controller.time_shutdown.value
+    active_time = total_time - sim.controller.cumulative_time_shutdown.value
     if active_time > 0:
         throughput = (
-            sim.mine.true_ore_extraction.value
+            sim.mine.cumulative_extracted_mass.value
             - config.ore_to_be_extracted_during_warming_period
         ) / active_time
         return throughput
@@ -548,25 +548,25 @@ def generate_rl_dashboard(
 
     # --- Mode Transition Log ---
     print("\n--- Mode Transition Log ---")
-    df["current_mode_name"] = df["current_mode"].apply(
+    df["active_operating_mode_name"] = df["active_operating_mode"].apply(
         lambda x: x.name if hasattr(x, "name") else str(x)
     )
-    print(df["current_mode_name"].unique()[:5])
-    df["prev_mode_name"] = df["current_mode_name"].shift(1)
+    print(df["active_operating_mode_name"].unique()[:5])
+    df["prev_mode_name"] = df["active_operating_mode_name"].shift(1)
     transitions = df[
-        (df["current_mode_name"] != df["prev_mode_name"]) & df["prev_mode_name"].notna()
+        (df["active_operating_mode_name"] != df["prev_mode_name"]) & df["prev_mode_name"].notna()
     ]
 
     for idx, row in transitions.iterrows():
         print(
-            f"Time: {row['time']:.2f} | Transition: {row['prev_mode_name']} -> {row['current_mode_name']}"
+            f"Time: {row['time']:.2f} | Transition: {row['prev_mode_name']} -> {row['active_operating_mode_name']}"
         )
-        total_stock = row["TrueOre1Stock_mass"] + row["TrueOre2Stock_mass"]
+        total_stock = row["Ore1Stock_mass"] + row["Ore2Stock_mass"]
         print(
-            f"  ↳ Ore1 Stock: {row['TrueOre1Stock_mass']:.1f} | Ore2 Stock: {row['TrueOre2Stock_mass']:.1f} (Critical: {sim_config.critical_ore2_level}) | Total Stock: {total_stock:.1f} (Target: {sim_config.target_ore_stock_level})"
+            f"  ↳ Ore1 Stock: {row['Ore1Stock_mass']:.1f} | Ore2 Stock: {row['Ore2Stock_mass']:.1f} (Critical: {config.critical_ore2_level}) | Total Stock: {row['total_system_ore_mass']:.1f} (Target: {config.target_ore_stock_level})"
         )
         print(
-            f"  ↳ Campaign/Shutdown Timer: {row['TimeExecutedInCurrentCampaignOrShutdown_Timer']:.2f} | Contingency Timer: {row['TimeExecutedInCurrentContingencySegment_Timer']:.2f}"
+            f"  ↳ Campaign/Shutdown Timer: {row['TimeExecutedInCurrentCampaignOrShutdown']:.2f} | Contingency Timer: {row['TimeExecutedInCurrentContingencySegment']:.2f}"
         )
     print("---------------------------\n")
 
@@ -574,12 +574,12 @@ def generate_rl_dashboard(
     import pandas as pd
 
     dt = df["time"].diff().fillna(0)
-    actual_extraction_step = df["TrueOreExtraction_Level"].diff().fillna(0)
+    actual_extraction_step = df["cumulative_extracted_mass"].diff().fillna(0)
     ideal_extraction_step = dt * 6000.0
     step_deficit = (ideal_extraction_step - actual_extraction_step).clip(lower=0)
 
     deficit_df = pd.DataFrame(
-        {"mode": df["current_mode_name"], "deficit": step_deficit}
+        {"mode": df["active_operating_mode_name"], "deficit": step_deficit}
     )
 
     total_deficit_by_mode = (
@@ -598,7 +598,7 @@ def generate_rl_dashboard(
     print("\n--- Mode Distribution (% of Time Spent) ---")
     df_dist = df.copy()
     df_dist["dt"] = df_dist["time"].diff().shift(-1).fillna(0)
-    durations = df_dist.groupby("current_mode_name")["dt"].sum()
+    durations = df_dist.groupby("active_operating_mode_name")["dt"].sum()
     total_t = durations.sum()
     if total_t > 0:
         for mode, duration in durations.items():
@@ -607,7 +607,7 @@ def generate_rl_dashboard(
     print("-" * 43 + "\n")
 
     # Create Modes Series
-    df["Mode A"] = df["current_mode_name"].apply(
+    df["Mode A"] = df["active_operating_mode_name"].apply(
         lambda m: (
             3
             if m
@@ -619,7 +619,7 @@ def generate_rl_dashboard(
             else 0
         )
     )
-    df["Mode B"] = df["current_mode_name"].apply(
+    df["Mode B"] = df["active_operating_mode_name"].apply(
         lambda m: (
             2
             if m
@@ -631,15 +631,15 @@ def generate_rl_dashboard(
             else 0
         )
     )
-    df["Shutdown"] = df["current_mode_name"].apply(
+    df["Shutdown"] = df["active_operating_mode_name"].apply(
         lambda m: 1 if m == "SHUTDOWN" else 0
     )
 
     # Create Ore Level Series (scaled by 1000)
-    df["TrueOreStock_Level"] = df["TrueOre1Stock_mass"] + df["TrueOre2Stock_mass"]
-    df["Total Ore Stockpile Level"] = df["TrueOreStock_Level"] / 1000.0
-    df["Ore 1 Stockpile Level"] = df["TrueOre1Stock_mass"] / 1000.0
-    df["Ore 2 Stockpile Level"] = df["TrueOre2Stock_mass"] / 1000.0
+    df["total_system_ore_mass"] = df["Ore1Stock_mass"] + df["Ore2Stock_mass"]
+    df["Total Ore Stockpile Level"] = df["total_system_ore_mass"] / 1000.0
+    df["Ore 1 Stockpile Level"] = df["Ore1Stock_mass"] / 1000.0
+    df["Ore 2 Stockpile Level"] = df["Ore2Stock_mass"] / 1000.0
 
     from drs.plot import (
         plot_time_series,
@@ -688,11 +688,11 @@ def generate_rl_dashboard(
             "kwargs": {
                 "time_col": "time",
                 "ore_cols": [
-                    "TrueOreStock_Level",
-                    "TrueOre1Stock_mass",
-                    "TrueOre2Stock_mass",
+                    "total_system_ore_mass",
+                    "Ore1Stock_mass",
+                    "Ore2Stock_mass",
                 ],
-                "mode_col": "current_mode_name",
+                "mode_col": "active_operating_mode_name",
                 "campaign_split_mode": "SHUTDOWN",
                 "title": "Ore Stockpiles & Campaigns",
                 "palette": palette,
@@ -719,8 +719,8 @@ def generate_rl_dashboard(
         {
             "func": plot_dual_axis_step,
             "kwargs": {
-                "y1_col": "MassOfCurrentParcel_State",
-                "y2_col": "CurrentParcelRoutingFraction_State",
+                "y1_col": "MassOfCurrentParcel",
+                "y2_col": "CurrentParcelRoutingFraction",
                 "y1_label": "Parcel Mass (tons)",
                 "y2_label": "Grade (% Ore 2)",
                 "title": "Current Parcel Properties",
@@ -729,7 +729,7 @@ def generate_rl_dashboard(
         {
             "func": plot_safety_margin,
             "kwargs": {
-                "level_col": "TrueOre1Stock_mass",
+                "level_col": "Ore1Stock_mass",
                 "constraint_value": 0.0,
                 "constraint_type": "lower",
                 "title": "Safety Margin: Ore 1 Distance to Floor",
@@ -739,7 +739,7 @@ def generate_rl_dashboard(
         {
             "func": plot_safety_margin,
             "kwargs": {
-                "level_col": "TrueOre2Stock_mass",
+                "level_col": "Ore2Stock_mass",
                 "constraint_value": 0.0,
                 "constraint_type": "lower",
                 "title": "Safety Margin: Ore 2 Distance to Floor",
@@ -749,7 +749,7 @@ def generate_rl_dashboard(
         {
             "func": plot_mode_distribution,
             "kwargs": {
-                "mode_col": "current_mode_name",
+                "mode_col": "active_operating_mode_name",
                 "time_col": "time",
                 "title": "Mode Distribution (% of Time Spent)",
                 "palette": palette,
@@ -759,7 +759,7 @@ def generate_rl_dashboard(
             "func": plot_mode_dwell_times,
             "kwargs": {
                 "time_col": "time",
-                "mode_col": "current_mode_name",
+                "mode_col": "active_operating_mode_name",
                 "title": "Mode Stability (Dwell Times)",
             },
         },
@@ -776,8 +776,8 @@ def generate_rl_dashboard(
             "func": plot_attributed_deficit,
             "kwargs": {
                 "time_col": "time",
-                "mode_col": "current_mode_name",
-                "extraction_col": "TrueOreExtraction_Level",
+                "mode_col": "active_operating_mode_name",
+                "extraction_col": "cumulative_extracted_mass",
                 "ideal_rate_per_day": 6000.0,
                 "title": "Cumulative Production Deficit by Mode",
                 "palette": palette,
@@ -786,7 +786,7 @@ def generate_rl_dashboard(
         {
             "func": plot_deficit_disparity,
             "kwargs": {
-                "mode_col": "current_mode_name",
+                "mode_col": "active_operating_mode_name",
                 "title": "Mode Efficiency (Time Spent vs. Deficit Caused)",
                 "ideal_rate": 6000.0,
             },
@@ -794,7 +794,7 @@ def generate_rl_dashboard(
         {
             "func": plot_deficit_breakdown_bar,
             "kwargs": {
-                "mode_col": "current_mode_name",
+                "mode_col": "active_operating_mode_name",
                 "ideal_rate_per_day": 6000.0,
                 "palette": palette,
             },
@@ -802,7 +802,7 @@ def generate_rl_dashboard(
         {
             "func": plot_structural_vs_operational_deficit,
             "kwargs": {
-                "mode_col": "current_mode_name",
+                "mode_col": "active_operating_mode_name",
                 "ideal_rate": 6000.0,
                 "structural_modes": structural_modes,
             },
@@ -810,7 +810,7 @@ def generate_rl_dashboard(
         {
             "func": plot_normalized_cumulative_deficit,
             "kwargs": {
-                "mode_col": "current_mode_name",
+                "mode_col": "active_operating_mode_name",
                 "ideal_rate_per_day": 6000.0,
                 "palette": palette,
             },
@@ -818,7 +818,7 @@ def generate_rl_dashboard(
         {
             "func": plot_structural_vs_operational_by_mode,
             "kwargs": {
-                "mode_col": "current_mode_name",
+                "mode_col": "active_operating_mode_name",
                 "ideal_rate": 6000.0,
                 "structural_modes": structural_modes,
             },

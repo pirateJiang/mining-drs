@@ -15,7 +15,7 @@ from examples.mining.components.config import ConcentratorConfig
 
 def test_contingency_timer_resets_when_entering_mode_a_contingency():
     sim = ConcentratorModel(ConcentratorConfig())
-    sim.true_ore2_stock.mass.value = 0.0
+    sim.ore2_stock.current_mass.value = 0.0
     sim.controller.current_mode.value = MODES["MODE_A"]
     sim.controller.time_executed_contingency.value = 0.75
 
@@ -27,7 +27,7 @@ def test_contingency_timer_resets_when_entering_mode_a_contingency():
 
 def test_contingency_timer_resets_when_entering_mode_b_contingency():
     sim = ConcentratorModel(ConcentratorConfig())
-    sim.true_ore1_stock.mass.value = 0.0
+    sim.ore1_stock.current_mass.value = 0.0
     sim.controller.current_mode.value = MODES["MODE_B"]
     sim.controller.time_executed_contingency.value = 0.75
 

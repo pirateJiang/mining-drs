@@ -17,3 +17,19 @@ Need to make Kriging stuff (or find online or in a library), SGS and GSGS stuff 
 LOOK AT CITATION 11 TO GET ADD NPV AND IRR TO MY EXISTING MODELS AND PLOTS APE1455294.pdf
 
 Make it possible to from code make a set of equations and variable valuables. 
+
+
+
+---- 
+
+BEFORE MONDAY 
+
+Get Visualizations Working
+Get Fleet Simulation Example Working 
+Get SGS working 
+
+Further future: 
+Make own GeoStatistics System. 
+RL Stuff
+
+--- 

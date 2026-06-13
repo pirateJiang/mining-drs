@@ -45,13 +45,13 @@ class MiningRLEnv(gym.Env):
         """Helper to safely calculate total elapsed simulation days."""
         c = self.sim.controller
         return (
-            c.time_mode_a.value
-            + c.time_mode_a_contingency.value
-            + c.time_mode_a_surging.value
-            + c.time_mode_b.value
-            + c.time_mode_b_contingency.value
-            + c.time_mode_b_surging.value
-            + c.time_shutdown.value
+            c.cumulative_time_mode_a.value
+            + c.cumulative_time_mode_a_contingency.value
+            + c.cumulative_time_mode_a_surging.value
+            + c.cumulative_time_mode_b.value
+            + c.cumulative_time_mode_b_contingency.value
+            + c.cumulative_time_mode_b_surging.value
+            + c.cumulative_time_shutdown.value
         )
 
     def reset(self, seed=None, options=None):
@@ -75,7 +75,7 @@ class MiningRLEnv(gym.Env):
 
         # Update time and extraction after the first initial run to the first decision point
         self.last_time = self._get_current_time()
-        self.last_extraction = self.sim.mine.true_ore_extraction.value
+        self.last_extraction = self.sim.mine.cumulative_extracted_mass.value
 
         return self._get_obs(), {}
 
@@ -94,8 +94,8 @@ class MiningRLEnv(gym.Env):
         # 3. Stock Penalty
         stock_penalty_weight = self.rl_config.sparse_reward_stock_penalty_weight
         total_stock = (
-            self.sim.true_ore1_stock.mass.value
-            + self.sim.true_ore2_stock.mass.value
+            self.sim.ore1_stock.current_mass.value
+            + self.sim.ore2_stock.current_mass.value
         )
         overstock = max(0.0, total_stock - self.config.target_ore_stock_level)
         overstock_scaled = overstock / self.rl_config.stockpile_scaling_factor
@@ -108,13 +108,13 @@ class MiningRLEnv(gym.Env):
         # TODO: note to add action masking so if surging is needed only that mode can be selected
         if (
             action == 0
-            and self.sim.plant.true_ore_stock.value
+            and self.sim.controller.total_system_ore_mass.value
             > self.config.target_ore_stock_level
         ):
             action = 2  # Mode A Mine Surging
         elif (
             action == 1
-            and self.sim.plant.true_ore_stock.value
+            and self.sim.controller.total_system_ore_mass.value
             > self.config.target_ore_stock_level
         ):
             action = 3  # Mode B Mine Surging
@@ -131,7 +131,7 @@ class MiningRLEnv(gym.Env):
         terminated = self.sim.is_terminating_condition_met()
 
         current_time = self._get_current_time()
-        current_extraction = self.sim.mine.true_ore_extraction.value
+        current_extraction = self.sim.mine.cumulative_extracted_mass.value
 
         dt = current_time - self.last_time
         tons_processed = current_extraction - self.last_extraction
@@ -150,7 +150,7 @@ class MiningRLEnv(gym.Env):
         # TODO: scaling value for this, right now it is arbitrary.
         # TODO: should this be unified with the overstock penalty?
         # abs_distance = abs(
-        #     self.sim.plant.true_ore_stock.value - self.config.target_ore_stock_level
+        #     self.sim.controller.total_system_ore_mass.value - self.config.target_ore_stock_level
         # )
         # reward -= abs_distance / 1000.0
 
@@ -161,10 +161,10 @@ class MiningRLEnv(gym.Env):
 
         return np.array(
             [
-                self.sim.true_ore1_stock.mass.value / target,
-                self.sim.true_ore2_stock.mass.value / target,
-                self.sim.plant.true_ore_stock.value / target,
-                self.sim.fleet.fraction_to_ore2.value,
+                self.sim.ore1_stock.current_mass.value / target,
+                self.sim.ore2_stock.current_mass.value / target,
+                self.sim.controller.total_system_ore_mass.value / target,
+                self.sim.fleet.stockpile2_routing_fraction.value,
                 self._get_current_time() / self.rl_config.time_scaling_factor,
             ],
             dtype=np.float32,

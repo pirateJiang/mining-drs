@@ -41,19 +41,19 @@ def evaluate_throughput(config: ConcentratorConfig, N: int) -> tuple[float, floa
         # Calculate Throughput manually as the paper defined it
         # Throughput = Total Processed / Active Production Time (Time - Shutdown Time)
         total_time = (
-            sim.controller.time_mode_a.value
-            + sim.controller.time_mode_a_contingency.value
-            + sim.controller.time_mode_a_surging.value
-            + sim.controller.time_mode_b.value
-            + sim.controller.time_mode_b_contingency.value
-            + sim.controller.time_mode_b_surging.value
-            + sim.controller.time_shutdown.value
+            sim.controller.cumulative_time_mode_a.value
+            + sim.controller.cumulative_time_mode_a_contingency.value
+            + sim.controller.cumulative_time_mode_a_surging.value
+            + sim.controller.cumulative_time_mode_b.value
+            + sim.controller.cumulative_time_mode_b_contingency.value
+            + sim.controller.cumulative_time_mode_b_surging.value
+            + sim.controller.cumulative_time_shutdown.value
         )
 
-        active_time = total_time - sim.controller.time_shutdown.value
+        active_time = total_time - sim.controller.cumulative_time_shutdown.value
         if active_time > 0:
             throughput = (
-                sim.mine.true_ore_extraction.value
+                sim.mine.cumulative_extracted_mass.value
                 - sim.config.ore_to_be_extracted_during_warming_period
             ) / active_time
             throughputs.append(throughput)
@@ -137,7 +137,7 @@ if __name__ == "__main__":
     from examples.mining.components.modes import MODES
 
     # Run your massive Monte Carlo simulation at lightning speed
-    sim.controller.current_mode.value = MODES["MODE_A"]
+    sim.controller.active_operating_mode.value = MODES["MODE_A"]
 
     engine = DRSEngine(sim)
     engine.run(max_time=config.replication_length)
@@ -150,24 +150,24 @@ if __name__ == "__main__":
 
     # --- Mode Transition Log ---
     print("\n--- Mode Transition Log ---")
-    df["current_mode_name"] = df["current_mode"].apply(
-        lambda x: x.name if hasattr(x, "name") else str(x)
+    df["active_operating_mode_name"] = df["active_operating_mode"].apply(
+        lambda x: x.name if x else "None"
     )
-    print(df["current_mode_name"].unique()[:5])
-    df["prev_mode_name"] = df["current_mode_name"].shift(1)
+    print(df["active_operating_mode_name"].unique()[:5])
+    df["prev_mode_name"] = df["active_operating_mode_name"].shift(1)
     transitions = df[
-        (df["current_mode_name"] != df["prev_mode_name"]) & df["prev_mode_name"].notna()
+        (df["active_operating_mode_name"] != df["prev_mode_name"]) & df["prev_mode_name"].notna()
     ]
-
+    
     for idx, row in transitions.iterrows():
         print(
-            f"Time: {row['time']:.2f} | Transition: {row['prev_mode_name']} -> {row['current_mode_name']}"
+            f"Time: {row['time']:.2f} | Transition: {row['prev_mode_name']} -> {row['active_operating_mode_name']}"
         )
         print(
-            f"  ↳ Ore1 Stock: {row['TrueOre1Stock_mass']:.1f} | Ore2 Stock: {row['TrueOre2Stock_mass']:.1f} (Critical: {config.critical_ore2_level}) | Total Stock: {row['TrueOreStock_Level']:.1f} (Target: {config.target_ore_stock_level})"
+            f"  ↳ Ore1 Stock: {row['Ore1Stock_mass']:.1f} | Ore2 Stock: {row['Ore2Stock_mass']:.1f} (Critical: {config.critical_ore2_level}) | Total Stock: {row['total_system_ore_mass']:.1f} (Target: {config.target_ore_stock_level})"
         )
         print(
-            f"  ↳ Campaign/Shutdown Timer: {row['TimeExecutedInCurrentCampaignOrShutdown_Timer']:.2f} | Contingency Timer: {row['TimeExecutedInCurrentContingencySegment_Timer']:.2f}"
+            f"  ↳ Campaign/Shutdown Timer: {row['current_campaign_duration']:.2f} | Contingency Timer: {row['current_contingency_duration']:.2f}"
         )
     print("---------------------------\n")
 
@@ -175,12 +175,12 @@ if __name__ == "__main__":
     import pandas as pd
 
     dt = df["time"].diff().fillna(0)
-    actual_extraction_step = df["TrueOreExtraction_Level"].diff().fillna(0)
+    actual_extraction_step = df["cumulative_extracted_mass"].diff().fillna(0)
     ideal_extraction_step = dt * 6000.0
     step_deficit = (ideal_extraction_step - actual_extraction_step).clip(lower=0)
 
     deficit_df = pd.DataFrame(
-        {"mode": df["current_mode_name"], "deficit": step_deficit}
+        {"mode": df["active_operating_mode_name"], "deficit": step_deficit}
     )
 
     total_deficit_by_mode = (
@@ -197,7 +197,7 @@ if __name__ == "__main__":
     print("----------------------------------------------------\n")
 
     # Create Modes Series
-    df["Mode A"] = df["current_mode_name"].apply(
+    df["Mode A"] = df["active_operating_mode_name"].apply(
         lambda m: (
             3
             if m
@@ -209,7 +209,7 @@ if __name__ == "__main__":
             else 0
         )
     )
-    df["Mode B"] = df["current_mode_name"].apply(
+    df["Mode B"] = df["active_operating_mode_name"].apply(
         lambda m: (
             2
             if m
@@ -221,14 +221,14 @@ if __name__ == "__main__":
             else 0
         )
     )
-    df["Shutdown"] = df["current_mode_name"].apply(
+    df["Shutdown"] = df["active_operating_mode_name"].apply(
         lambda m: 1 if m == "SHUTDOWN" else 0
     )
 
     # Create Ore Level Series (scaled by 1000)
-    df["Total Ore Stockpile Level"] = df["TrueOreStock_Level"] / 1000.0
-    df["Ore 1 Stockpile Level"] = df["TrueOre1Stock_mass"] / 1000.0
-    df["Ore 2 Stockpile Level"] = df["TrueOre2Stock_mass"] / 1000.0
+    df["Total Ore Stockpile Level"] = df["total_system_ore_mass"] / 1000.0
+    df["Ore 1 Stockpile Level"] = df["Ore1Stock_mass"] / 1000.0
+    df["Ore 2 Stockpile Level"] = df["Ore2Stock_mass"] / 1000.0
 
     from drs.plot import (
         plot_time_series,
@@ -277,11 +277,11 @@ if __name__ == "__main__":
             "kwargs": {
                 "time_col": "time",
                 "ore_cols": [
-                    "TrueOreStock_Level",
-                    "TrueOre1Stock_mass",
-                    "TrueOre2Stock_mass",
+                    "total_system_ore_mass",
+                    "Ore1Stock_mass",
+                    "Ore2Stock_mass",
                 ],
-                "mode_col": "current_mode_name",
+                "mode_col": "active_operating_mode_name",
                 "campaign_split_mode": "SHUTDOWN",
                 "title": "Ore Stockpiles & Campaigns",
                 "palette": palette,
@@ -308,8 +308,8 @@ if __name__ == "__main__":
         {
             "func": plot_dual_axis_step,
             "kwargs": {
-                "y1_col": "MassOfCurrentParcel_State",
-                "y2_col": "CurrentParcelRoutingFraction_State",
+                "y1_col": "MassOfCurrentParcel",
+                "y2_col": "CurrentParcelRoutingFraction",
                 "y1_label": "Parcel Mass (tons)",
                 "y2_label": "Grade (% Ore 2)",
                 "title": "Current Parcel Properties",
@@ -318,7 +318,7 @@ if __name__ == "__main__":
         {
             "func": plot_safety_margin,
             "kwargs": {
-                "level_col": "TrueOre1Stock_mass",
+                "level_col": "Ore1Stock_mass",
                 "constraint_value": 0.0,
                 "constraint_type": "lower",
                 "title": "Safety Margin: Ore 1 Distance to Floor",
@@ -328,7 +328,7 @@ if __name__ == "__main__":
         {
             "func": plot_safety_margin,
             "kwargs": {
-                "level_col": "TrueOre2Stock_mass",
+                "level_col": "Ore2Stock_mass",
                 "constraint_value": 0.0,
                 "constraint_type": "lower",
                 "title": "Safety Margin: Ore 2 Distance to Floor",
@@ -338,7 +338,7 @@ if __name__ == "__main__":
         {
             "func": plot_mode_distribution,
             "kwargs": {
-                "mode_col": "current_mode_name",
+                "mode_col": "active_operating_mode_name",
                 "time_col": "time",
                 "title": "Mode Distribution (% of Time Spent)",
                 "palette": palette,
@@ -348,7 +348,7 @@ if __name__ == "__main__":
             "func": plot_mode_dwell_times,
             "kwargs": {
                 "time_col": "time",
-                "mode_col": "current_mode_name",
+                "mode_col": "active_operating_mode_name",
                 "title": "Mode Stability (Dwell Times)",
             },
         },
@@ -365,8 +365,8 @@ if __name__ == "__main__":
             "func": plot_attributed_deficit,
             "kwargs": {
                 "time_col": "time",
-                "mode_col": "current_mode_name",
-                "extraction_col": "TrueOreExtraction_Level",
+                "mode_col": "active_operating_mode_name",
+                "extraction_col": "cumulative_extracted_mass",
                 "ideal_rate_per_day": 6000.0,
                 "title": "Cumulative Production Deficit by Mode",
                 "palette": palette,
@@ -375,7 +375,7 @@ if __name__ == "__main__":
         {
             "func": plot_deficit_disparity,
             "kwargs": {
-                "mode_col": "current_mode_name",
+                "mode_col": "active_operating_mode_name",
                 "title": "Mode Efficiency (Time Spent vs. Deficit Caused)",
                 "ideal_rate": 6000.0,
             },
@@ -383,7 +383,7 @@ if __name__ == "__main__":
         {
             "func": plot_deficit_breakdown_bar,
             "kwargs": {
-                "mode_col": "current_mode_name",
+                "mode_col": "active_operating_mode_name",
                 "ideal_rate_per_day": 6000.0,
                 "palette": palette,
             },
@@ -391,7 +391,7 @@ if __name__ == "__main__":
         {
             "func": plot_structural_vs_operational_deficit,
             "kwargs": {
-                "mode_col": "current_mode_name",
+                "mode_col": "active_operating_mode_name",
                 "ideal_rate": 6000.0,
                 "structural_modes": structural_modes,
             },
@@ -399,7 +399,7 @@ if __name__ == "__main__":
         {
             "func": plot_normalized_cumulative_deficit,
             "kwargs": {
-                "mode_col": "current_mode_name",
+                "mode_col": "active_operating_mode_name",
                 "ideal_rate_per_day": 6000.0,
                 "palette": palette,
             },
@@ -407,7 +407,7 @@ if __name__ == "__main__":
         {
             "func": plot_structural_vs_operational_by_mode,
             "kwargs": {
-                "mode_col": "current_mode_name",
+                "mode_col": "active_operating_mode_name",
                 "ideal_rate": 6000.0,
                 "structural_modes": structural_modes,
             },

@@ -10,7 +10,7 @@ def plot_ore_with_modes(
     df,
     time_col="time",
     ore_cols=None,
-    mode_col="current_mode",
+    mode_col="active_operating_mode",
     title="Ore Stockpiles with Mode Switch Markers",
     campaign_split_mode=None,
     hlines=None,
@@ -18,7 +18,7 @@ def plot_ore_with_modes(
     palette=None,
 ):
     if ore_cols is None:
-        ore_cols = ["ore_stock"]
+        ore_cols = ["total_system_ore_mass"]
     elif isinstance(ore_cols, str):
         ore_cols = [ore_cols]
 
@@ -168,8 +168,8 @@ def plot_ore_with_modes(
 
 def plot_state_space(
     df,
-    col_x="TrueOre1Stock_mass",
-    col_y="TrueOre2Stock_mass",
+    col_x="Ore1Stock_mass",
+    col_y="Ore2Stock_mass",
     title="State Space Trajectory",
     ax=None,
 ):
@@ -227,7 +227,7 @@ def plot_state_space(
 
 def plot_cumulative_throughput(
     df,
-    extraction_col="TrueOreExtraction_Level",
+    extraction_col="cumulative_extracted_mass",
     time_col="time",
     ideal_rate=None,
     title="Cumulative Throughput vs Target",
@@ -286,9 +286,9 @@ def plot_normalized_deviation_violin(
     target_total=60000.0,
     target_ore1=42000.0,
     target_ore2=18000.0,
-    col_total="TrueOreStock_Level",
-    col_ore1="TrueOre1Stock_mass",
-    col_ore2="TrueOre2Stock_mass",
+    col_total="total_system_ore_mass",
+    col_ore1="Ore1Stock_mass",
+    col_ore2="Ore2Stock_mass",
     ax=None
 ):
     if ax is None:
@@ -297,12 +297,12 @@ def plot_normalized_deviation_violin(
     else:
         own_ax = False
 
-    if col_total not in df.columns and "OreStock_Level" in df.columns:
-        col_total = "OreStock_Level"
-    if col_ore1 not in df.columns and "Ore1Stock_Level" in df.columns:
-        col_ore1 = "Ore1Stock_Level"
-    if col_ore2 not in df.columns and "Ore2Stock_Level" in df.columns:
-        col_ore2 = "Ore2Stock_Level"
+    if col_total not in df.columns and "OreStock" in df.columns:
+        col_total = "OreStock"
+    if col_ore1 not in df.columns and "Ore1Stock" in df.columns:
+        col_ore1 = "Ore1Stock"
+    if col_ore2 not in df.columns and "Ore2Stock" in df.columns:
+        col_ore2 = "Ore2Stock"
 
     dev_total = ((df[col_total] - target_total) / target_total) * 100 if target_total else df[col_total] * 0
     dev_ore1 = ((df[col_ore1] - target_ore1) / target_ore1) * 100 if target_ore1 else df[col_ore1] * 0
@@ -343,7 +343,7 @@ def plot_normalized_deviation_violin(
     return ax
 
 
-def plot_attributed_deficit(df, time_col="time", mode_col="current_mode", extraction_col="TrueOreExtraction_Level",
+def plot_attributed_deficit(df, time_col="time", mode_col="active_operating_mode", extraction_col="cumulative_extracted_mass",
                             ideal_rate_per_day=6000.0, title="Cumulative Production Deficit by Mode", ax=None, palette=None):
     if ax is None:
         fig, ax = plt.subplots(figsize=(12, 6))
@@ -402,7 +402,7 @@ def plot_attributed_deficit(df, time_col="time", mode_col="current_mode", extrac
     return ax
 
 
-def plot_deficit_disparity(df, time_col="time", mode_col="current_mode", extraction_col="TrueOreExtraction_Level", ideal_rate=6000.0, title="Mode Efficiency (Time Spent vs. Deficit Caused)", ax=None, verbose=True):
+def plot_deficit_disparity(df, time_col="time", mode_col="active_operating_mode", extraction_col="cumulative_extracted_mass", ideal_rate=6000.0, title="Mode Efficiency (Time Spent vs. Deficit Caused)", ax=None, verbose=True):
     if ax is None:
         fig, ax = plt.subplots(figsize=(10, 6))
         own_ax = True
@@ -446,7 +446,7 @@ def plot_deficit_disparity(df, time_col="time", mode_col="current_mode", extract
     return ax
 
 
-def plot_geology_impact(df, time_col="time", mode_col="current_mode", extraction_col="TrueOreExtraction_Level", grade_col="percentage_of_ore2", ideal_rate=6000.0, bottleneck_mode="MODE_A", max_rate_ore1=3600, max_rate_ore2=2400, ax=None):
+def plot_geology_impact(df, time_col="time", mode_col="active_operating_mode", extraction_col="cumulative_extracted_mass", grade_col="percentage_of_ore2", ideal_rate=6000.0, bottleneck_mode="MODE_A", max_rate_ore1=3600, max_rate_ore2=2400, ax=None):
     if ax is None:
         fig, ax = plt.subplots(figsize=(10, 6))
         own_ax = True
@@ -503,7 +503,7 @@ def plot_geology_impact(df, time_col="time", mode_col="current_mode", extraction
     return ax
 
 
-def plot_deficit_breakdown_bar(df, time_col="time", mode_col="current_mode", extraction_col="TrueOreExtraction_Level", ideal_rate_per_day=6000.0, title="Final Deficit Breakdown by Mode (%)", ax=None, palette=None, verbose=True):
+def plot_deficit_breakdown_bar(df, time_col="time", mode_col="active_operating_mode", extraction_col="cumulative_extracted_mass", ideal_rate_per_day=6000.0, title="Final Deficit Breakdown by Mode (%)", ax=None, palette=None, verbose=True):
     if ax is None:
         fig, ax = plt.subplots(figsize=(10, 6))
         own_ax = True
@@ -559,7 +559,7 @@ def plot_deficit_breakdown_bar(df, time_col="time", mode_col="current_mode", ext
     return ax
 
 
-def plot_structural_vs_operational_deficit(df, time_col="time", mode_col="current_mode", extraction_col="TrueOreExtraction_Level", ideal_rate=6000.0, structural_modes=None, ax=None, verbose=True):
+def plot_structural_vs_operational_deficit(df, time_col="time", mode_col="active_operating_mode", extraction_col="cumulative_extracted_mass", ideal_rate=6000.0, structural_modes=None, ax=None, verbose=True):
     if ax is None:
         fig, ax = plt.subplots(figsize=(10, 6))
         own_ax = True
@@ -611,7 +611,7 @@ def plot_structural_vs_operational_deficit(df, time_col="time", mode_col="curren
     return ax
 
 
-def plot_normalized_cumulative_deficit(df, time_col="time", mode_col="current_mode", extraction_col="TrueOreExtraction_Level", ideal_rate_per_day=6000.0, title="Deficit Composition Over Time (100% Stacked)", ax=None, palette=None):
+def plot_normalized_cumulative_deficit(df, time_col="time", mode_col="active_operating_mode", extraction_col="cumulative_extracted_mass", ideal_rate_per_day=6000.0, title="Deficit Composition Over Time (100% Stacked)", ax=None, palette=None):
     if ax is None:
         fig, ax = plt.subplots(figsize=(12, 6))
         own_ax = True
@@ -653,7 +653,7 @@ def plot_normalized_cumulative_deficit(df, time_col="time", mode_col="current_mo
     return ax
 
 
-def plot_structural_vs_operational_by_mode(df, time_col="time", mode_col="current_mode", extraction_col="TrueOreExtraction_Level", ideal_rate=6000.0, title="Structural vs. Operational Deficit by Base Mode", structural_modes=None, base_mode_mapper=None, ax=None, verbose=True):
+def plot_structural_vs_operational_by_mode(df, time_col="time", mode_col="active_operating_mode", extraction_col="cumulative_extracted_mass", ideal_rate=6000.0, title="Structural vs. Operational Deficit by Base Mode", structural_modes=None, base_mode_mapper=None, ax=None, verbose=True):
     if ax is None:
         fig, ax = plt.subplots(figsize=(10, 6))
         own_ax = True

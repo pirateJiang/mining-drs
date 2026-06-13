@@ -27,4 +27,4 @@ class RL_ConcentratorModel(ConcentratorModel):
         # In RL, we terminate strictly when the extraction limit is reached.
         # The agent receives a terminal penalty for the stockpile offset.
         c = self.config
-        return self.mine.true_ore_extraction.value >= c.total_ore_to_extract
+        return self.mine.cumulative_extracted_mass.value >= c.total_ore_to_extract

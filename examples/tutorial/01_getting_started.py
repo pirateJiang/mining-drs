@@ -62,7 +62,7 @@ class Stockpile(drs.Module):
         self.outflow = drs.Variable(f"{name}_outflow", 0.0)
 
     def forward(self, requested_outflow: float):
-        outflow = min(requested_outflow, self.mass.value) if self.mass.value > 0 else 0.0
+        outflow = min(requested_outflow, self.current_mass.value) if self.current_mass.value > 0 else 0.0
         self.mass.rate = self.mass.rate - outflow
         self.outflow.value = outflow
         return outflow
@@ -94,7 +94,7 @@ class Monitor(drs.Module):
         self.observed_level = drs.Variable("observed_level", 0.0)
 
     def forward(self, stockpile):
-        self.observed_level.value = stockpile.mass.value
+        self.observed_level.value = stockpile.current_mass.value
 
 
 class SimpleMine(drs.Module):
@@ -129,12 +129,12 @@ for path, mod in model.named_modules():
 engine.run(max_time=10.0)
 
 print(f"\n5b. After 10 days:")
-print(f"    Stockpile mass:   {model.stockpile.mass.value:.1f} t")
+print(f"    Stockpile mass:   {model.stockpile.current_mass.value:.1f} t")
 print(f"    Mill total milled: {model.mill.total_milled.value:.1f} t")
 print(f"    Mill feed rate:    {model.mill.feed_rate.value:.1f} t/day")
 # Mass balance check: inflow * time = stockpile + milled
 total_in = model.extraction_rate.value * engine.current_time
-print(f"    Mass balance:      {total_in:.1f} t in = {model.stockpile.mass.value + model.mill.total_milled.value:.1f} t out")
+print(f"    Mass balance:      {total_in:.1f} t in = {model.stockpile.current_mass.value + model.mill.total_milled.value:.1f} t out")
 
 
 # ── Part 6: Threshold-Driven Events ────────────────────────────────────
@@ -295,7 +295,7 @@ except AttributeError as e:
 # Cross-module mutations are blocked during forward():
 class BadActor(drs.Module):
     def forward(self):
-        model.stockpile.mass.value = 0.0
+        model.stockpile.current_mass.value = 0.0
 
 bad = BadActor()
 try:

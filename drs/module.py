@@ -1,6 +1,6 @@
 import math
 from typing import Iterator
-from .variables import Variable, Level, Timer
+from .variables import Variable, Level, Timer, Expression
 from .execution_context import ExecutionContext
 from .data_source import DataPoint
 from .flow import Flow
@@ -23,9 +23,30 @@ class Module:
         self._flow_dep_seen = set()
 
     def __call__(self, *args, **kwargs):
-        previous = ExecutionContext.get_current()
+        caller = ExecutionContext.get_current()
         ExecutionContext.push(self)
         try:
+            if caller is not None and caller is not self:
+                def validate_drs_type(arg, arg_name):
+                    if arg is None:
+                        return
+                    if isinstance(arg, (tuple, list)):
+                        for item in arg:
+                            validate_drs_type(item, arg_name)
+                        return
+                        
+                    if not isinstance(arg, (Flow, Variable, Expression, DataPoint)):
+                        raise RuntimeError(
+                            f"Hidden Dependency Error: '{type(caller).__name__}' passed an untracked type "
+                            f"'{type(arg).__name__}' to '{type(self).__name__}' for {arg_name}. "
+                            f"Inter-module arguments MUST be drs.Flow (physics) or drs.Variable (control)."
+                        )
+
+                for i, arg in enumerate(args):
+                    validate_drs_type(arg, f"positional arg {i}")
+                for key, val in kwargs.items():
+                    validate_drs_type(val, f"keyword arg '{key}'")
+
             for arg in args:
                 if isinstance(arg, Flow) and arg._source is not None:
                     ExecutionContext.record_flow_edge(arg._source, self)

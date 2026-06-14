@@ -1,3 +1,11 @@
+"""
+Two faces	Simplest multi-face extension. With 2 faces, allocation can be expressed as a single ratio. N-faces would require a linear program per mode.
+Continuous fleet	Avoids event-based truck scheduling complexity. Continuous flows match the mill's steady-state assumption and the stockpile's continuous-time ODE.
+Face allocation = fixed means per mode	Using face generator means (not current parcels) gives stable, campaign-long ratios. Dynamic per-timestep solves would jitter with parcel changes.
+Surging = extreme allocation	Surging must produce an OFF-target blend to drain the stockpile. Using the base-mode allocation creates a degenerate equilibrium (extraction = milling).
+50/50 face composition	Face means chosen so a 50/50 split matches the single-face's effective 70% ore1.
+"""
+
 import sys
 import os
 
@@ -12,9 +20,12 @@ import random
 import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
-import types
 
-from examples.mining.components import ConcentratorConfig, ConcentratorModel, ActiveFleetConcentratorModel
+from examples.mining.components import (
+    ConcentratorConfig,
+    ConcentratorModel,
+    ActiveFleetConcentratorModel,
+)
 from drs import DRSEngine
 
 
@@ -53,7 +64,10 @@ def evaluate_throughput(config: ConcentratorConfig, N: int) -> tuple[float, floa
         active_time = total_time - sim.controller.cumulative_time_shutdown.value
         if active_time > 0:
             throughput = (
-                (sim.face1.cumulative_extracted_mass.value + sim.face2.cumulative_extracted_mass.value)
+                (
+                    sim.face1.cumulative_extracted_mass.value
+                    + sim.face2.cumulative_extracted_mass.value
+                )
                 - sim.config.ore_to_be_extracted_during_warming_period
             ) / active_time
             throughputs.append(throughput)
@@ -144,6 +158,7 @@ if __name__ == "__main__":
     sim.print_statistics()
 
     from drs.vis.module_graph import save_module_graph_report
+
     save_module_graph_report(sim, path_prefix="Concentrator_Module_Graph")
 
     df = sim.telemetry.to_dataframe()
@@ -156,9 +171,10 @@ if __name__ == "__main__":
     print(df["active_operating_mode_name"].unique()[:5])
     df["prev_mode_name"] = df["active_operating_mode_name"].shift(1)
     transitions = df[
-        (df["active_operating_mode_name"] != df["prev_mode_name"]) & df["prev_mode_name"].notna()
+        (df["active_operating_mode_name"] != df["prev_mode_name"])
+        & df["prev_mode_name"].notna()
     ]
-    
+
     for idx, row in transitions.iterrows():
         print(
             f"Time: {row['time']:.2f} | Transition: {row['prev_mode_name']} -> {row['active_operating_mode_name']}"
@@ -176,8 +192,8 @@ if __name__ == "__main__":
 
     dt = df["time"].diff().fillna(0)
     actual_extraction_step = (
-        df["face1_extracted_mass"] + df["face2_extracted_mass"]
-    ).diff().fillna(0)
+        (df["face1_extracted_mass"] + df["face2_extracted_mass"]).diff().fillna(0)
+    )
     ideal_extraction_step = dt * 6000.0
     step_deficit = (ideal_extraction_step - actual_extraction_step).clip(lower=0)
 

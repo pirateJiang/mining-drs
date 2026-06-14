@@ -9,7 +9,7 @@ from .plant import BaseMetallurgicalPlant, ConcentratorPlant
 from .controllers import (
     BaseBlendingController,
     ConcentratorController,
-    ActiveFleetConcentratorController,
+    MultiFaceConcentratorController,
 )
 from .generators import (
     StochasticFaciesGenerator,
@@ -192,46 +192,41 @@ class ActiveFleetConcentratorModel(BaseBlendingModel):
         self.face2 = ContinuousMineFace(config, face_id=2, generator=gen2)
         self.fleet = ContinuousFleetLogistics()
 
-        # Stockpiles
-        initial_mass1 = 0.6 * config.target_ore_stock_level
+        initial_fraction = self.config.mean_ore_fraction
+        initial_mass1 = (1 - initial_fraction) * config.target_ore_stock_level
         self.ore1_stock = Stockpile(
             name="Ore1Stock",
-            expected_attributes=["contained_grade_mass"],
+            expected_attributes=["contained_ore_fraction_mass"],
             initial_mass=initial_mass1,
-            initial_attributes={"contained_grade_mass": initial_mass1},
+            initial_attributes={
+                "contained_ore_fraction_mass": initial_mass1 * initial_fraction
+            },
         )
-        initial_mass2 = 0.4 * config.target_ore_stock_level
+        initial_mass2 = initial_fraction * config.target_ore_stock_level
         self.ore2_stock = Stockpile(
             name="Ore2Stock",
-            expected_attributes=["contained_grade_mass"],
+            expected_attributes=["contained_ore_fraction_mass"],
             initial_mass=initial_mass2,
-            initial_attributes={"contained_grade_mass": 0},
+            initial_attributes={
+                "contained_ore_fraction_mass": initial_mass2 * initial_fraction
+            },
         )
 
         self.plant = ConcentratorPlant(
             config, None, self.fleet, self.ore1_stock, self.ore2_stock
         )
 
-        # TODO: why do we need these dummy classes can we get rid of them.
-        class DummyMine:
-            def __init__(self, parent):
-                self.parent = parent
-
-            @property
-            def cumulative_extracted_mass(self):
-                return self.parent.cumulative_extracted_mass
-
-        self.controller = ActiveFleetConcentratorController(
-            config, DummyMine(self), self.fleet, self.plant
+        self.controller = MultiFaceConcentratorController(
+            config, faces=[self.face1, self.face2], fleet=self.fleet, plant=self.plant
         )
 
         self.setup_telemetry()
         if self.enable_telemetry:
             self.telemetry.register_metric(
-                "face1_alloc", lambda t, m, s, h: m.face1.allocation_fraction.value
+                "face1_alloc", lambda t, m, s, h: m.controller.face_target_rates[0].value / max(1e-12, m.controller.target_mine_mass_rate.value)
             )
             self.telemetry.register_metric(
-                "face2_alloc", lambda t, m, s, h: m.face2.allocation_fraction.value
+                "face2_alloc", lambda t, m, s, h: m.controller.face_target_rates[1].value / max(1e-12, m.controller.target_mine_mass_rate.value)
             )
             self.telemetry.register_metric(
                 "ore2_ratio",
@@ -275,6 +270,9 @@ class ActiveFleetConcentratorModel(BaseBlendingModel):
             )
 
     def setup_telemetry(self):
+        # NOTE: Intentionally NOT calling super().setup_telemetry() because
+        # the base class registers metrics referencing m.mine which is None
+        # in the multi-face case. Face/parcel metrics are registered below.
         if self.enable_telemetry:
             self.telemetry = Telemetry(self)
             self.register_post_step_hook(self.telemetry.snapshot)
@@ -287,27 +285,12 @@ class ActiveFleetConcentratorModel(BaseBlendingModel):
                 lambda t, m, s, h: m.controller.current_contingency_duration.value,
             )
 
-    @property
-    def cumulative_extracted_mass(self):
-        class DummyMass:
-            def __init__(self, parent):
-                self.parent = parent
-
-            @property
-            def value(self):
-                return (
-                    self.parent.face1.cumulative_extracted_mass.value
-                    + self.parent.face2.cumulative_extracted_mass.value
-                )
-
-        return DummyMass(self)
-
     def forward(self):
         self.global_time.rate = 1.0
         self.controller()
         ore1_flow, ore2_flow = self.fleet(
-            self.face1(self.controller.target_face1_allocation),
-            self.face2(self.controller.target_face2_allocation),
+            self.face1(self.controller.face_target_rates[0]),
+            self.face2(self.controller.face_target_rates[1]),
         )
         out1 = self.ore1_stock(
             self.controller.target_stock1_outflow_rate, inflow=ore1_flow

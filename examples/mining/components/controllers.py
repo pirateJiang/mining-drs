@@ -205,33 +205,114 @@ class ConcentratorController(BaseBlendingController):
         super().__init__(config, mine, fleet, plant)
 
 
-# TODO: make it so Mode A matches the usage of ore 1 in A. Ie ratios for each mode should match useage in each mode (60/40 for A)
-class ActiveFleetConcentratorController(ConcentratorController):
-    def __init__(self, config, mine, fleet, plant):
-        super().__init__(config, mine, fleet, plant)
-        self.target_face1_allocation = drs.Variable("target_face1_allocation", 0.5)
-        self.target_face2_allocation = drs.Variable("target_face2_allocation", 0.5)
+class MultiFaceConcentratorController(BaseBlendingController):
+    """Controller for multi-face mine operations.
+
+    Uses pre-computed fixed face allocation fractions per operating mode,
+    computed from each face's generator mean ore fraction. This avoids
+    per-timestep linear solves and provides stable campaign-long allocations.
+
+    NOTE: Allocation fractions are computed from face generator means (not
+    current parcel values) for stability. The effective ore1 fraction for
+    each face is 1.0 - generator.mean_fraction (due to the inversion in
+    ContinuousMineFace).
+
+    When the target blend is structurally impossible with the given face
+    means, negative face rates are clamped to zero. The resulting stockpile
+    imbalance naturally triggers surging mode.
+    """
+
+    def __init__(self, config, faces, fleet, plant):
+        super().__init__(config, mine=None, fleet=fleet, plant=plant)
+        self.faces = list(faces)
+        self.face_target_rates = []
+        for i in range(len(self.faces)):
+            var = drs.Variable(f"face{i}_rate", 0.0)
+            setattr(self, f"face{i}_rate", var)
+            self.face_target_rates.append(var)
+        self._mode_allocations = self._precompute_allocations()
+
+    def _precompute_allocations(self):
+        """Pre-compute fixed face extraction fractions per mode using face mean ore fractions."""
+        face_ore1_fracs = [1.0 - f.generator.mean_fraction for f in self.faces]
+        f1, f2 = face_ore1_fracs[0], face_ore1_fracs[1]
+
+        modes_to_compute = {
+            "MODE_A": (self.config.mode_a_ore1_milling_rate, self.config.mode_a_ore2_milling_rate),
+            "MODE_A_CONTINGENCY": (self.config.mode_a_contingency_ore1_milling_rate, 0.0),
+            "MODE_B": (self.config.mode_b_ore1_milling_rate, self.config.mode_b_ore2_milling_rate),
+            "MODE_B_CONTINGENCY": (0.0, self.config.mode_b_contingency_ore2_milling_rate),
+        }
+
+        result = {}
+        for mode_name, (ore1, ore2) in modes_to_compute.items():
+            total = ore1 + ore2
+            if total <= 0 or abs(f1 - f2) < 1e-12:
+                fracs = [0.5, 0.5] if total > 0 else [0.0, 0.0]
+            else:
+                r1 = (ore1 - total * f2) / (f1 - f2)
+                r1 = max(0.0, min(total, r1))
+                r2 = total - r1
+                fracs = [r1 / total, r2 / total]
+            result[mode_name] = fracs
+
+        # Surging modes use extreme allocations to correct the imbalance.
+        # MODE_A_MINE_SURGING (ore1 stockout): maximize ore1 → all to face1 (85% ore1)
+        # MODE_B_MINE_SURGING (ore2 stockout): maximize ore2 → all to face2 (45% ore2)
+        # This ensures surging produces a blend different from the base mode target,
+        # letting the stockpile drain and surging exit quickly. Without this, surging
+        # would produce the same blend as the base mode (e.g. 60/40 for Mode A),
+        # making extraction = milling and the system stuck in surging forever.
+        result["MODE_A_MINE_SURGING"] = [1.0, 0.0]
+        result["MODE_B_MINE_SURGING"] = [0.0, 1.0]
+
+        return result
 
     def forward(self):
-        # Run standard Mode A/B and contingency logic first
-        super().forward()
+        c = self.config
 
-        # Only re-evaluate face allocation during shutdowns (every 35 days),
-        # matching the plant's campaign cycle. The allocation stays fixed
-        # for the entire production campaign.
-        if self.active_operating_mode.value.name == "SHUTDOWN":
-            stock1 = self.parent.ore1_stock.current_mass.value
-            stock2 = self.parent.ore2_stock.current_mass.value
-            total_stock = stock1 + stock2
-            ore2_ratio = stock2 / total_stock if total_stock > 1e-6 else 0.40
+        total_extracted = sum(f.cumulative_extracted_mass.value for f in self.faces)
+        if abs(total_extracted - c.ore_to_be_extracted_during_warming_period) < 1e-6:
+            self.cumulative_time_mode_a.reset()
+            self.cumulative_time_mode_a_contingency.reset()
+            self.cumulative_time_mode_a_surging.reset()
+            self.cumulative_time_mode_b.reset()
+            self.cumulative_time_mode_b_contingency.reset()
+            self.cumulative_time_mode_b_surging.reset()
+            self.cumulative_time_shutdown.reset()
 
-            # Protect 40% Ore 2 Target Ratio via face allocation
-            if ore2_ratio < 0.38:
-                self.target_face1_allocation.value = 0.20
-                self.target_face2_allocation.value = 0.80
-            elif ore2_ratio > 0.42:
-                self.target_face1_allocation.value = 0.80
-                self.target_face2_allocation.value = 0.20
-            else:
-                self.target_face1_allocation.value = 0.50
-                self.target_face2_allocation.value = 0.50
+        self.total_system_ore_mass.value = (
+            self.parent.ore1_stock.current_mass.value
+            + self.parent.ore2_stock.current_mass.value
+        )
+
+        next_mode = self.active_operating_mode.value.check_end_conditions(self.parent)
+
+        if isinstance(next_mode, RequireDecision):
+            decision = self.controller_decision()
+            if decision:
+                next_mode = decision
+
+        if next_mode:
+            self.active_operating_mode.value = next_mode
+
+        self._update_timers(self.active_operating_mode.value.name)
+
+        targets = self.active_operating_mode.value.get_target_rates(self.parent)
+        self.target_mine_mass_rate.value = targets.extraction_rate
+        self.target_stock1_outflow_rate.value = targets.ore1_milling_rate
+        self.target_stock2_outflow_rate.value = targets.ore2_milling_rate
+
+        # Look up exact mode name first (handles surging-specific allocations),
+        # then fall back to the base mode key.
+        mode_name = self.active_operating_mode.value.name
+        fracs = self._mode_allocations.get(mode_name)
+        if fracs is None:
+            base_key = mode_name.replace("_MINE_SURGING", "")
+            fracs = self._mode_allocations.get(base_key)
+        if fracs:
+            for i, face in enumerate(self.faces):
+                self.face_target_rates[i].value = targets.extraction_rate * fracs[i]
+        else:
+            for i, face in enumerate(self.faces):
+                self.face_target_rates[i].value = 0.0

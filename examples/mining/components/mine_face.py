@@ -1,9 +1,9 @@
+import random
 from drs.module import drs
 from drs.flow import Flow
 from .data import MineOutput
 from .config import ConcentratorConfig
-
-# TODO: do we need continuous mine face, concentrator face and base mine face? can we simplify? merge? I feel like we could get this down to 1 kind of mine face.
+from .generators import StochasticFaciesGenerator
 
 
 class BaseMineFace(drs.Module):
@@ -71,7 +71,6 @@ class BaseMineFace(drs.Module):
 class ConcentratorMineFace(BaseMineFace):
     def __init__(self, config: ConcentratorConfig):
         super().__init__(config)
-        from .generators import StochasticFaciesGenerator
 
         self.generator = StochasticFaciesGenerator(
             mean_fraction=self.config.mean_ore_fraction,
@@ -89,22 +88,15 @@ class ConcentratorMineFace(BaseMineFace):
             parcel_flow = self.generator()
             parcel = parcel_flow.value
 
-            import random
-
             self.active_parcel_initial_mass.value = random.uniform(
                 self.config.min_ore_mass, self.config.max_ore_mass
             )
-            # Invert the fraction to correctly route under True Route Policy 
-            # while maintaining identical seeding from the legacy parameters.
             self.active_parcel_ore_fraction.value = 1.0 - parcel.ore1_frac
         except StopIteration:
             pass
 
     def _get_current_attr_value(self) -> float:
         return self.active_parcel_ore_fraction.value
-
-    def forward(self):
-        return super().forward()
 
 
 class ContinuousMineFace(BaseMineFace):
@@ -112,7 +104,6 @@ class ContinuousMineFace(BaseMineFace):
         super().__init__(config)
         self.face_id = face_id
         self.generator = generator
-        self.allocation_fraction = drs.Variable(f"face{face_id}_allocation", 0.0)
         self.active_parcel_ore_fraction = drs.Variable(f"face{face_id}_ore_fraction", 0.0)
         self._load_next_batch()
 
@@ -120,7 +111,6 @@ class ContinuousMineFace(BaseMineFace):
         try:
             parcel_flow = self.generator()
             parcel = parcel_flow.value
-            import random
             self.active_parcel_initial_mass.value = random.uniform(
                 self.config.min_ore_mass, self.config.max_ore_mass
             )
@@ -131,13 +121,11 @@ class ContinuousMineFace(BaseMineFace):
     def _get_current_attr_value(self) -> float:
         return self.active_parcel_ore_fraction.value
 
-    def forward(self, allocation_signal=None):
-        if allocation_signal is not None:
-            self.allocation_fraction.value = allocation_signal.value
-
-        # Scale the global target rate by this face's allocation
-        total_target = self.parent.controller.target_mine_mass_rate.value
-        target_extraction_rate = total_target * self.allocation_fraction.value
+    def forward(self, target_rate=None):
+        if target_rate is not None:
+            target_extraction_rate = target_rate.value
+        else:
+            target_extraction_rate = 0.0
 
         if (
             self.parcel_extracted_mass.value
@@ -149,9 +137,18 @@ class ContinuousMineFace(BaseMineFace):
                 self.active_parcel_initial_mass.value
             )
 
-        self.cumulative_extracted_mass.upper_threshold = (
-            self.config.total_ore_to_extract
-        )
+        if (
+            self.cumulative_extracted_mass.value
+            < self.config.ore_to_be_extracted_during_warming_period
+        ):
+            self.cumulative_extracted_mass.upper_threshold = (
+                self.config.ore_to_be_extracted_during_warming_period
+            )
+        else:
+            self.cumulative_extracted_mass.upper_threshold = (
+                self.config.total_ore_to_extract
+            )
+
         self.parcel_extracted_mass.upper_threshold = (
             self.active_parcel_initial_mass.value
         )

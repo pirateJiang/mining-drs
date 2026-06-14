@@ -88,6 +88,9 @@ class OperatingMode:
         ore1, ore2 = _read_rates(self._name, config)
 
         if "_MINE_SURGING" in self._name:
+            model.controller.total_system_ore_mass.lower_threshold = (
+                config.target_ore_stock_level
+            )
             p = model.fleet.stockpile2_routing_fraction.value
             if self._name in ("MODE_A_MINE_SURGING", "MODE_C_MINE_SURGING"):
                 extraction = (ore1 / (1.0 - p)) if (1.0 - p) > 0 else 0.0
@@ -137,11 +140,7 @@ class OperatingMode:
             if base == "MODE_D" and ore1 <= config.stockout_epsilon:
                 ctrl.reset_contingency_timer()
                 return MODES[base + "_CONTINGENCY"]
-            model.controller.total_system_ore_mass.lower_threshold = (
-                config.target_ore_stock_level
-            )
 
-            # TODO: noticing that after surging we sometimes end on a threshold less than the target. What does the excel sheet do?
             if (
                 model.controller.total_system_ore_mass.value
                 <= config.target_ore_stock_level + 1e-6

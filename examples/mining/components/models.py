@@ -69,6 +69,10 @@ class BaseBlendingModel(drs.Module):
 
         self.plant(out1, out2)
 
+        self.controller.total_system_ore_mass.rate = (
+            self.ore1_stock.current_mass.rate + self.ore2_stock.current_mass.rate
+        )
+
     def is_terminating_condition_met(self) -> bool:
         return (
             self.mine.cumulative_extracted_mass.value

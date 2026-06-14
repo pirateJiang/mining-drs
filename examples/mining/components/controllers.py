@@ -163,16 +163,17 @@ class BaseBlendingController(drs.Module):
     def _choose_next_campaign_mode(self, config):
         ore2 = self.parent.ore2_stock.current_mass.value
         total_stock = self.total_system_ore_mass.value
+        EPS = 1e-6
         if ore2 > config.critical_ore2_level:
             return (
                 MODES["MODE_A"]
-                if total_stock <= config.target_ore_stock_level
+                if total_stock <= config.target_ore_stock_level + EPS
                 else MODES["MODE_A_MINE_SURGING"]
             )
         else:
             return (
                 MODES["MODE_B"]
-                if total_stock <= config.target_ore_stock_level
+                if total_stock <= config.target_ore_stock_level + EPS
                 else MODES["MODE_B_MINE_SURGING"]
             )
 

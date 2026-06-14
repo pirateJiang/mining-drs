@@ -51,6 +51,9 @@ end
 
 The following read-dependencies were recorded during the simulation. An arrow `A → B` means module B reads a variable owned by module A.
 
+  - `ore1_stock` → `ConcentratorModel` reads `Ore1Stock_mass`
+  - `ore2_stock` → `ConcentratorModel` reads `Ore2Stock_mass`
+  - `controller` → `ConcentratorModel` reads `total_system_ore_mass`
   - `controller` → `mine` reads `target_mine_mass_rate`
   - `controller` → `ore1_stock` reads `target_stock1_outflow_rate`
   - `controller` → `ore2_stock` reads `target_stock2_outflow_rate`

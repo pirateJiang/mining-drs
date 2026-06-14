@@ -123,7 +123,8 @@ class BaseBlendingController(drs.Module):
             self.cumulative_time_shutdown.reset()
 
         self.total_system_ore_mass.value = (
-            self.parent.ore1_stock.current_mass.value + self.parent.ore2_stock.current_mass.value
+            self.parent.ore1_stock.current_mass.value
+            + self.parent.ore2_stock.current_mass.value
         )
 
         next_mode = self.active_operating_mode.value.check_end_conditions(self.parent)
@@ -204,6 +205,7 @@ class ConcentratorController(BaseBlendingController):
         super().__init__(config, mine, fleet, plant)
 
 
+# TODO: make it so Mode A matches the usage of ore 1 in A. Ie ratios for each mode should match useage in each mode (60/40 for A)
 class ActiveFleetConcentratorController(ConcentratorController):
     def __init__(self, config, mine, fleet, plant):
         super().__init__(config, mine, fleet, plant)
@@ -214,19 +216,22 @@ class ActiveFleetConcentratorController(ConcentratorController):
         # Run standard Mode A/B and contingency logic first
         super().forward()
 
-        # Calculate stockpile ratio
-        stock1 = self.parent.ore1_stock.current_mass.value
-        stock2 = self.parent.ore2_stock.current_mass.value
-        total_stock = stock1 + stock2
-        ore2_ratio = stock2 / total_stock if total_stock > 1e-6 else 0.40
+        # Only re-evaluate face allocation during shutdowns (every 35 days),
+        # matching the plant's campaign cycle. The allocation stays fixed
+        # for the entire production campaign.
+        if self.active_operating_mode.value.name == "SHUTDOWN":
+            stock1 = self.parent.ore1_stock.current_mass.value
+            stock2 = self.parent.ore2_stock.current_mass.value
+            total_stock = stock1 + stock2
+            ore2_ratio = stock2 / total_stock if total_stock > 1e-6 else 0.40
 
-        # Protect 40% Ore 2 Target Ratio via face allocation
-        if ore2_ratio < 0.38:
-            self.target_face1_allocation.value = 0.20  # Face 1 (High Ore 1) gets 20%
-            self.target_face2_allocation.value = 0.80  # Face 2 (High Ore 2) gets 80%
-        elif ore2_ratio > 0.42:
-            self.target_face1_allocation.value = 0.80
-            self.target_face2_allocation.value = 0.20
-        else:
-            self.target_face1_allocation.value = 0.50
-            self.target_face2_allocation.value = 0.50
+            # Protect 40% Ore 2 Target Ratio via face allocation
+            if ore2_ratio < 0.38:
+                self.target_face1_allocation.value = 0.20
+                self.target_face2_allocation.value = 0.80
+            elif ore2_ratio > 0.42:
+                self.target_face1_allocation.value = 0.80
+                self.target_face2_allocation.value = 0.20
+            else:
+                self.target_face1_allocation.value = 0.50
+                self.target_face2_allocation.value = 0.50

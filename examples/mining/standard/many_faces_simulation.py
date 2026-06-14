@@ -308,6 +308,42 @@ if __name__ == "__main__":
             },
         },
         {
+            "func": plot_dual_axis_step,
+            "kwargs": {
+                "y1_col": "face1_parcel_mass",
+                "y2_col": "face1_parcel_ratio",
+                "y1_label": "Face 1 Parcel Mass (tons)",
+                "y2_label": "Face 1 Ore 1 Fraction",
+                "title": "Face 1 Current Parcel Properties",
+                "y1_color": "saddlebrown",
+                "y2_color": "darkorange",
+            },
+        },
+        {
+            "func": plot_dual_axis_step,
+            "kwargs": {
+                "y1_col": "face2_parcel_mass",
+                "y2_col": "face2_parcel_ratio",
+                "y1_label": "Face 2 Parcel Mass (tons)",
+                "y2_label": "Face 2 Ore 1 Fraction",
+                "title": "Face 2 Current Parcel Properties",
+                "y1_color": "saddlebrown",
+                "y2_color": "darkorange",
+            },
+        },
+        {
+            "func": plot_dual_axis_step,
+            "kwargs": {
+                "y1_col": "mixed_extraction_rate",
+                "y2_col": "mixed_ore1_fraction",
+                "y1_label": "Combined Extraction Rate (t/d)",
+                "y2_label": "Mixed Ore 1 Fraction",
+                "title": "Combined Mine Output Properties",
+                "y1_color": "saddlebrown",
+                "y2_color": "darkorange",
+            },
+        },
+        {
             "func": plot_time_series,
             "kwargs": {
                 "y_columns": ["face1_alloc", "face2_alloc", "ore2_ratio"],

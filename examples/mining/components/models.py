@@ -174,78 +174,156 @@ class ConcentratorModel(BaseBlendingModel):
 class ActiveFleetConcentratorModel(BaseBlendingModel):
     def __init__(self, config: ConcentratorConfig, enable_telemetry: bool = False):
         super().__init__(config, enable_telemetry)
-        
-        gen1 = StochasticFaciesGenerator(mean_fraction=0.80, std_dev=0.10)
-        gen2 = StochasticFaciesGenerator(mean_fraction=0.30, std_dev=0.03)
-        
+
+        gen1 = StochasticFaciesGenerator(
+            mean_fraction=0.15,
+            std_dev=0.075,
+            prob_new_facies=config.prob_new_facies,
+            variation_same_facies=config.variation_same_facies,
+        )
+        gen2 = StochasticFaciesGenerator(
+            mean_fraction=0.45,
+            std_dev=0.025,
+            prob_new_facies=config.prob_new_facies,
+            variation_same_facies=config.variation_same_facies,
+        )
+
         self.face1 = ContinuousMineFace(config, face_id=1, generator=gen1)
         self.face2 = ContinuousMineFace(config, face_id=2, generator=gen2)
         self.fleet = ContinuousFleetLogistics()
-        
+
         # Stockpiles
         initial_mass1 = 0.6 * config.target_ore_stock_level
         self.ore1_stock = Stockpile(
             name="Ore1Stock",
             expected_attributes=["contained_grade_mass"],
             initial_mass=initial_mass1,
-            initial_attributes={"contained_grade_mass": initial_mass1}
+            initial_attributes={"contained_grade_mass": initial_mass1},
         )
         initial_mass2 = 0.4 * config.target_ore_stock_level
         self.ore2_stock = Stockpile(
             name="Ore2Stock",
             expected_attributes=["contained_grade_mass"],
             initial_mass=initial_mass2,
-            initial_attributes={"contained_grade_mass": 0}
+            initial_attributes={"contained_grade_mass": 0},
         )
-        
-        self.plant = ConcentratorPlant(config, None, self.fleet, self.ore1_stock, self.ore2_stock)
-        
+
+        self.plant = ConcentratorPlant(
+            config, None, self.fleet, self.ore1_stock, self.ore2_stock
+        )
+
+        # TODO: why do we need these dummy classes can we get rid of them.
         class DummyMine:
             def __init__(self, parent):
                 self.parent = parent
+
             @property
             def cumulative_extracted_mass(self):
                 return self.parent.cumulative_extracted_mass
-                
-        self.controller = ActiveFleetConcentratorController(config, DummyMine(self), self.fleet, self.plant)
-        
+
+        self.controller = ActiveFleetConcentratorController(
+            config, DummyMine(self), self.fleet, self.plant
+        )
+
         self.setup_telemetry()
         if self.enable_telemetry:
-            self.telemetry.register_metric("face1_alloc", lambda t,m,s,h: m.face1.allocation_fraction.value)
-            self.telemetry.register_metric("face2_alloc", lambda t,m,s,h: m.face2.allocation_fraction.value)
-            self.telemetry.register_metric("ore2_ratio", lambda t,m,s,h: m.ore2_stock.current_mass.value / max(1e-6, m.ore1_stock.current_mass.value + m.ore2_stock.current_mass.value))
-            self.telemetry.register_metric("face1_extracted_mass", lambda t,m,s,h: m.face1.cumulative_extracted_mass.value)
-            self.telemetry.register_metric("face2_extracted_mass", lambda t,m,s,h: m.face2.cumulative_extracted_mass.value)
+            self.telemetry.register_metric(
+                "face1_alloc", lambda t, m, s, h: m.face1.allocation_fraction.value
+            )
+            self.telemetry.register_metric(
+                "face2_alloc", lambda t, m, s, h: m.face2.allocation_fraction.value
+            )
+            self.telemetry.register_metric(
+                "ore2_ratio",
+                lambda t, m, s, h: m.ore2_stock.current_mass.value
+                / max(
+                    1e-6,
+                    m.ore1_stock.current_mass.value + m.ore2_stock.current_mass.value,
+                ),
+            )
+            self.telemetry.register_metric(
+                "face1_extracted_mass",
+                lambda t, m, s, h: m.face1.cumulative_extracted_mass.value,
+            )
+            self.telemetry.register_metric(
+                "face2_extracted_mass",
+                lambda t, m, s, h: m.face2.cumulative_extracted_mass.value,
+            )
+            self.telemetry.register_metric(
+                "face1_parcel_mass",
+                lambda t, m, s, h: m.face1.active_parcel_initial_mass.value,
+            )
+            self.telemetry.register_metric(
+                "face1_parcel_ratio",
+                lambda t, m, s, h: m.face1.active_parcel_ore_fraction.value,
+            )
+            self.telemetry.register_metric(
+                "face2_parcel_mass",
+                lambda t, m, s, h: m.face2.active_parcel_initial_mass.value,
+            )
+            self.telemetry.register_metric(
+                "face2_parcel_ratio",
+                lambda t, m, s, h: m.face2.active_parcel_ore_fraction.value,
+            )
+            self.telemetry.register_metric(
+                "mixed_extraction_rate",
+                lambda t, m, s, h: m.controller.target_mine_mass_rate.value,
+            )
+            self.telemetry.register_metric(
+                "mixed_ore1_fraction",
+                lambda t, m, s, h: 1.0 - m.fleet.stockpile2_routing_fraction.value,
+            )
 
     def setup_telemetry(self):
         if self.enable_telemetry:
             self.telemetry = Telemetry(self)
             self.register_post_step_hook(self.telemetry.snapshot)
-            self.telemetry.register_metric("Campaign_Shutdown", lambda t, m, s, h: m.controller.current_campaign_duration.value)
-            self.telemetry.register_metric("Contingency", lambda t, m, s, h: m.controller.current_contingency_duration.value)
+            self.telemetry.register_metric(
+                "Campaign_Shutdown",
+                lambda t, m, s, h: m.controller.current_campaign_duration.value,
+            )
+            self.telemetry.register_metric(
+                "Contingency",
+                lambda t, m, s, h: m.controller.current_contingency_duration.value,
+            )
 
     @property
     def cumulative_extracted_mass(self):
         class DummyMass:
             def __init__(self, parent):
                 self.parent = parent
+
             @property
             def value(self):
-                return self.parent.face1.cumulative_extracted_mass.value + self.parent.face2.cumulative_extracted_mass.value
+                return (
+                    self.parent.face1.cumulative_extracted_mass.value
+                    + self.parent.face2.cumulative_extracted_mass.value
+                )
+
         return DummyMass(self)
 
     def forward(self):
         self.global_time.rate = 1.0
         self.controller()
-        ore1_flow, ore2_flow = self.fleet(self.face1(self.controller.target_face1_allocation), self.face2(self.controller.target_face2_allocation))
-        out1 = self.ore1_stock(self.controller.target_stock1_outflow_rate, inflow=ore1_flow)
-        out2 = self.ore2_stock(self.controller.target_stock2_outflow_rate, inflow=ore2_flow)
+        ore1_flow, ore2_flow = self.fleet(
+            self.face1(self.controller.target_face1_allocation),
+            self.face2(self.controller.target_face2_allocation),
+        )
+        out1 = self.ore1_stock(
+            self.controller.target_stock1_outflow_rate, inflow=ore1_flow
+        )
+        out2 = self.ore2_stock(
+            self.controller.target_stock2_outflow_rate, inflow=ore2_flow
+        )
         self.plant(out1, out2)
-        
+
         self.controller.total_system_ore_mass.rate = (
             self.ore1_stock.current_mass.rate + self.ore2_stock.current_mass.rate
         )
-        
+
     def is_terminating_condition_met(self):
-        total_extracted = self.face1.cumulative_extracted_mass.value + self.face2.cumulative_extracted_mass.value
+        total_extracted = (
+            self.face1.cumulative_extracted_mass.value
+            + self.face2.cumulative_extracted_mass.value
+        )
         return total_extracted >= self.config.total_ore_to_extract

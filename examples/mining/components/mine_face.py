@@ -108,24 +108,28 @@ class ConcentratorMineFace(BaseMineFace):
 
 
 class ContinuousMineFace(BaseMineFace):
-    def __init__(self, config, face_id, generator, parcel_size=250.0):
+    def __init__(self, config, face_id, generator):
         super().__init__(config)
         self.face_id = face_id
         self.generator = generator
         self.allocation_fraction = drs.Variable(f"face{face_id}_allocation", 0.0)
-        self.active_parcel_ore1_frac = drs.Variable(f"face{face_id}_ore1_frac", 0.0)
-        self.parcel_size = parcel_size
+        self.active_parcel_ore_fraction = drs.Variable(f"face{face_id}_ore_fraction", 0.0)
         self._load_next_batch()
 
     def _load_next_batch(self):
         try:
-            self.active_parcel_ore1_frac.value = self.generator().value.ore1_frac
-            self.active_parcel_initial_mass.value = self.parcel_size
+            parcel_flow = self.generator()
+            parcel = parcel_flow.value
+            import random
+            self.active_parcel_initial_mass.value = random.uniform(
+                self.config.min_ore_mass, self.config.max_ore_mass
+            )
+            self.active_parcel_ore_fraction.value = 1.0 - parcel.ore1_frac
         except StopIteration:
             pass
 
     def _get_current_attr_value(self) -> float:
-        return self.active_parcel_ore1_frac.value
+        return self.active_parcel_ore_fraction.value
 
     def forward(self, allocation_signal=None):
         if allocation_signal is not None:
@@ -159,6 +163,6 @@ class ContinuousMineFace(BaseMineFace):
             value=MineOutput(
                 extraction_rate=target_extraction_rate,
                 parcel_mass=self.active_parcel_initial_mass.value,
-                attr_value=self.active_parcel_ore1_frac.value,
+                attr_value=self.active_parcel_ore_fraction.value,
             )
         )

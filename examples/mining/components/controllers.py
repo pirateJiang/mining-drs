@@ -225,12 +225,29 @@ class MultiFaceConcentratorController(BaseBlendingController):
     def __init__(self, config, faces, fleet, plant):
         super().__init__(config, mine=None, fleet=fleet, plant=plant)
         self.faces = list(faces)
-        self.face_target_rates = []
+        self.face_required_rates = []
+        self.face_capacity_rates = []
+        self.face_actual_rates = []
+        self.face_shift_capacity_factors = []
+        self.face_target_rates = self.face_actual_rates
         for i in range(len(self.faces)):
-            var = drs.Variable(f"face{i}_rate", 0.0)
-            setattr(self, f"face{i}_rate", var)
-            self.face_target_rates.append(var)
+            required = drs.Variable(f"face{i}_required_rate", 0.0)
+            capacity = drs.Variable(f"face{i}_capacity_rate", 0.0)
+            actual = drs.Variable(f"face{i}_rate", 0.0)
+            shift_factor = drs.Variable(f"face{i}_shift_capacity_factor", 1.0)
+            setattr(self, f"face{i}_required_rate", required)
+            setattr(self, f"face{i}_capacity_rate", capacity)
+            setattr(self, f"face{i}_rate", actual)
+            setattr(self, f"face{i}_shift_capacity_factor", shift_factor)
+            self.face_required_rates.append(required)
+            self.face_capacity_rates.append(capacity)
+            self.face_actual_rates.append(actual)
+            self.face_shift_capacity_factors.append(shift_factor)
         self._mode_allocations = self._precompute_allocations()
+        self.current_shift_allocations = None
+        self.current_shift_mode_name = None
+        self.fleet_shift_timer = drs.Timer("fleet_shift_timer", initial_value=0.0)
+        self.fleet_shift_count = drs.Variable("fleet_shift_count", 0)
 
     def _precompute_allocations(self):
         """Pre-compute fixed face extraction fractions per mode using face mean ore fractions."""
@@ -268,6 +285,56 @@ class MultiFaceConcentratorController(BaseBlendingController):
 
         return result
 
+    def _get_allocations_for_mode(self, mode_name):
+        fracs = self._mode_allocations.get(mode_name)
+        if fracs is None:
+            base_key = mode_name.replace("_MINE_SURGING", "")
+            fracs = self._mode_allocations.get(base_key)
+        return fracs
+
+    def _face_config_value(self, name, face_index, default):
+        values = getattr(self.config, name, None)
+        if values is None:
+            return default
+        if face_index < len(values):
+            return values[face_index]
+        return default
+
+    def _refresh_shift_capacity_factors(self):
+        for i, factor in enumerate(self.face_shift_capacity_factors):
+            factor.value = self._face_config_value(
+                "face_shift_capacity_factor", i, 1.0
+            )
+
+    def _face_excavation_capacity(self, face_index, required_rate):
+        c = self.config
+        if not getattr(c, "enable_face_capacity_limit", False):
+            return required_rate
+
+        lhd = self._face_config_value("face_lhd_allocation", face_index, 0.0)
+        truck = self._face_config_value("face_truck_allocation", face_index, 0.0)
+        availability = self._face_config_value("face_availability", face_index, 1.0)
+        distance = self._face_config_value("face_haul_distance", face_index, 0.0)
+        delay = self._face_config_value("face_delay_factor", face_index, 0.0)
+        shift_factor = self.face_shift_capacity_factors[face_index].value
+
+        capacity = (
+            c.excavation_rate_intercept
+            + c.excavation_lhd_coefficient * lhd
+            + c.excavation_truck_coefficient * truck
+            + c.excavation_availability_coefficient * availability
+            - c.excavation_distance_penalty * distance
+            - c.excavation_delay_penalty * delay
+        )
+        return max(0.0, capacity * shift_factor)
+
+    def _reallocate_fleet_for_shift(self):
+        mode_name = self.active_operating_mode.value.name
+        self.current_shift_allocations = self._get_allocations_for_mode(mode_name)
+        self.current_shift_mode_name = mode_name
+        self._refresh_shift_capacity_factors()
+        self.fleet_shift_count.value += 1
+
     def forward(self):
         c = self.config
 
@@ -296,23 +363,33 @@ class MultiFaceConcentratorController(BaseBlendingController):
         if next_mode:
             self.active_operating_mode.value = next_mode
 
-        self._update_timers(self.active_operating_mode.value.name)
+        mode_name = self.active_operating_mode.value.name
+        self._update_timers(mode_name)
+
+        self.fleet_shift_timer.rate = 1.0
+        self.fleet_shift_timer.upper_threshold = c.fleet_shift_duration
+
+        shift_due = self.fleet_shift_timer.value >= c.fleet_shift_duration - 1e-6
+        mode_changed = mode_name != self.current_shift_mode_name
+        if self.current_shift_allocations is None or shift_due or mode_changed:
+            self.fleet_shift_timer.reset()
+            self._reallocate_fleet_for_shift()
 
         targets = self.active_operating_mode.value.get_target_rates(self.parent)
         self.target_mine_mass_rate.value = targets.extraction_rate
         self.target_stock1_outflow_rate.value = targets.ore1_milling_rate
         self.target_stock2_outflow_rate.value = targets.ore2_milling_rate
 
-        # Look up exact mode name first (handles surging-specific allocations),
-        # then fall back to the base mode key.
-        mode_name = self.active_operating_mode.value.name
-        fracs = self._mode_allocations.get(mode_name)
-        if fracs is None:
-            base_key = mode_name.replace("_MINE_SURGING", "")
-            fracs = self._mode_allocations.get(base_key)
+        fracs = self.current_shift_allocations
         if fracs:
-            for i, face in enumerate(self.faces):
-                self.face_target_rates[i].value = targets.extraction_rate * fracs[i]
+            for i, _face in enumerate(self.faces):
+                required_rate = targets.extraction_rate * fracs[i]
+                capacity_rate = self._face_excavation_capacity(i, required_rate)
+                self.face_required_rates[i].value = required_rate
+                self.face_capacity_rates[i].value = capacity_rate
+                self.face_actual_rates[i].value = min(required_rate, capacity_rate)
         else:
-            for i, face in enumerate(self.faces):
-                self.face_target_rates[i].value = 0.0
+            for i, _face in enumerate(self.faces):
+                self.face_required_rates[i].value = 0.0
+                self.face_capacity_rates[i].value = 0.0
+                self.face_actual_rates[i].value = 0.0

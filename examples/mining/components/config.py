@@ -20,6 +20,12 @@ class BaseDualStockpileConfig:
     duration_of_production_campaigns: float = 34.0
     duration_of_shutdowns: float = 1.0
     duration_of_contingency_segments: float = 1.0
+    fleet_shift_duration: float = 0.5  # 12 hours; simulation time is in days.
+
+    # Physical operating bounds for mine-side surging targets.
+    max_mine_extraction_rate: float = 6000.0
+    max_surging_extraction_rate: float = 8000.0
+    min_effective_surging_fraction: float = 0.05
 
     # Helper Constants
     stockout_epsilon: float = 1e-9
@@ -48,3 +54,19 @@ class ConcentratorConfig(BaseDualStockpileConfig):
     mode_b_ore1_milling_rate: float = 4600.0
     mode_b_ore2_milling_rate: float = 800.0
     mode_b_contingency_ore2_milling_rate: float = 2500.0
+
+    # Face-level fleet capacity model. Disabled by default so Policy 1 stays
+    # the current fixed mode-dependent allocation baseline.
+    enable_face_capacity_limit: bool = False
+    face_lhd_allocation: tuple = (0.5, 0.5)
+    face_truck_allocation: tuple = (0.5, 0.5)
+    face_availability: tuple = (0.95, 0.95)
+    face_haul_distance: tuple = (1.0, 1.0)
+    face_delay_factor: tuple = (0.0, 0.0)
+    face_shift_capacity_factor: tuple = (1.0, 1.0)
+    excavation_rate_intercept: float = 0.0
+    excavation_lhd_coefficient: float = 5000.0
+    excavation_truck_coefficient: float = 5000.0
+    excavation_availability_coefficient: float = 1000.0
+    excavation_distance_penalty: float = 200.0
+    excavation_delay_penalty: float = 1000.0

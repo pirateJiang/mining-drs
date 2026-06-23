@@ -154,8 +154,8 @@ def _run_capacity_case(
     df["total_required_rate"] = (
         df["face1_required_rate"] + df["face2_required_rate"]
     )
-    df["total_capacity_rate"] = (
-        df["face1_capacity_rate"] + df["face2_capacity_rate"]
+    df["total_max_extraction_rate"] = (
+        df["face1_max_extraction_rate"] + df["face2_max_extraction_rate"]
     )
     df["total_actual_rate"] = df["face1_actual_rate"] + df["face2_actual_rate"]
     df["capacity_gap_rate"] = (
@@ -178,8 +178,16 @@ def _run_capacity_case(
         "final_time": float(df["time"].iloc[-1]),
         "fleet_shift_count": float(df["fleet_shift_count"].max()),
         "mean_total_required_rate": float(df["total_required_rate"].mean()),
-        "mean_total_capacity_rate": float(df["total_capacity_rate"].mean()),
+        "mean_total_max_extraction_rate": float(
+            df["total_max_extraction_rate"].mean()
+        ),
         "mean_total_actual_rate": float(df["total_actual_rate"].mean()),
+        "mean_face1_effective_delay_factor": float(
+            df["face1_effective_delay_factor"].mean()
+        ),
+        "mean_face2_effective_delay_factor": float(
+            df["face2_effective_delay_factor"].mean()
+        ),
         "mean_capacity_utilization": float(active_utilization.mean()),
         "max_capacity_gap_rate": float(df["capacity_gap_rate"].max()),
         "capacity_lost_mass": capacity_lost_mass,
@@ -206,6 +214,9 @@ def run_capacity_comparison(
         face_availability=(0.93, 0.91),
         face_haul_distance=(1.0, 1.2),
         face_delay_factor=(0.025, 0.04),
+        face_gas_delay_factor=(0.005, 0.01),
+        face_truck_congestion_threshold=(0.45, 0.45),
+        truck_congestion_delay_sensitivity=0.10,
         face_shift_capacity_factor=(1.0, 1.0),
     )
 
@@ -236,13 +247,15 @@ def run_capacity_comparison(
         "fleet_shift_count",
         "fleet_shift_timer",
         "face1_required_rate",
-        "face1_capacity_rate",
+        "face1_max_extraction_rate",
         "face1_actual_rate",
+        "face1_effective_delay_factor",
         "face2_required_rate",
-        "face2_capacity_rate",
+        "face2_max_extraction_rate",
         "face2_actual_rate",
+        "face2_effective_delay_factor",
         "total_required_rate",
-        "total_capacity_rate",
+        "total_max_extraction_rate",
         "total_actual_rate",
         "capacity_gap_rate",
         "capacity_utilization",
@@ -694,7 +707,7 @@ if __name__ == "__main__":
             "kwargs": {
                 "y_columns": [
                     "mixed_required_extraction_rate",
-                    "mixed_capacity_extraction_rate",
+                    "mixed_max_extraction_rate",
                     "mixed_extraction_rate",
                 ],
                 "title": "Fleet-Constrained Extraction Rates",

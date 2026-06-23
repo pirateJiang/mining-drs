@@ -1,3 +1,3 @@
-scenario,enable_face_capacity_limit,final_time,fleet_shift_count,mean_total_required_rate,mean_total_capacity_rate,mean_total_actual_rate,mean_capacity_utilization,max_capacity_gap_rate,capacity_lost_mass,final_ore1_stock,final_ore2_stock,min_ore2_stock
-Policy 1 baseline,False,1139.0,2331.0,5808.618068303807,5808.618068303807,5808.618068303807,1.0,0.0,0.0,27975.41084280384,32024.589157195744,18000.0
-Policy 1 + fleet capacity limit,True,1139.0,2708.0,5880.788111659453,11108.370821618244,5791.298976520803,0.9861079632342117,1268.2895513781086,59135.469005432635,5224.057859939658,54775.942140060215,18000.0
+scenario,enable_face_capacity_limit,final_time,fleet_shift_count,mean_total_required_rate,mean_total_max_extraction_rate,mean_total_actual_rate,mean_face1_effective_delay_factor,mean_face2_effective_delay_factor,mean_capacity_utilization,max_capacity_gap_rate,capacity_lost_mass,final_ore1_stock,final_ore2_stock,min_ore2_stock
+Policy 1 baseline,False,1139.0,2331.0,5808.618068303807,5808.618068303807,5808.618068303807,0.0,0.0,1.0,0.0,0.0,27975.41084280384,32024.589157195744,18000.0
+Policy 1 + fleet capacity limit,True,1139.0,2310.0,5823.597540890576,11030.550539617958,5812.3243845252055,0.03412465806955843,0.05362446268073466,0.9981948187769533,738.8024812970116,13503.256537320005,30334.803346186112,25612.74901737382,18000.0

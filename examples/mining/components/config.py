@@ -63,10 +63,11 @@ class ConcentratorConfig(BaseDualStockpileConfig):
     face_availability: tuple = (0.95, 0.95)
     face_haul_distance: tuple = (1.0, 1.0)
     face_delay_factor: tuple = (0.0, 0.0)
+    face_gas_delay_factor: tuple = (0.0, 0.0)
+    face_truck_congestion_threshold: tuple = (0.5, 0.5)
     face_shift_capacity_factor: tuple = (1.0, 1.0)
-    excavation_rate_intercept: float = 0.0
-    excavation_lhd_coefficient: float = 5000.0
-    excavation_truck_coefficient: float = 5000.0
-    excavation_availability_coefficient: float = 1000.0
-    excavation_distance_penalty: float = 200.0
-    excavation_delay_penalty: float = 1000.0
+    lhd_capacity_per_allocation: float = 13000.0
+    truck_capacity_per_allocation: float = 13000.0
+    truck_congestion_delay_sensitivity: float = 0.0
+    haul_distance_reference: float = 1.0
+    haul_distance_sensitivity: float = 0.10

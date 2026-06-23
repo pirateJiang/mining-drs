@@ -267,24 +267,36 @@ class ActiveFleetConcentratorModel(BaseBlendingModel):
                 lambda t, m, s, h: m.controller.face_required_rates[0].value,
             )
             self.telemetry.register_metric(
-                "face1_capacity_rate",
-                lambda t, m, s, h: m.controller.face_capacity_rates[0].value,
+                "face1_max_extraction_rate",
+                lambda t, m, s, h: m.controller.face_max_extraction_rates[0].value,
             )
             self.telemetry.register_metric(
                 "face1_actual_rate",
                 lambda t, m, s, h: m.controller.face_actual_rates[0].value,
             )
             self.telemetry.register_metric(
+                "face1_effective_delay_factor",
+                lambda t, m, s, h: m.controller.face_effective_delay_factors[
+                    0
+                ].value,
+            )
+            self.telemetry.register_metric(
                 "face2_required_rate",
                 lambda t, m, s, h: m.controller.face_required_rates[1].value,
             )
             self.telemetry.register_metric(
-                "face2_capacity_rate",
-                lambda t, m, s, h: m.controller.face_capacity_rates[1].value,
+                "face2_max_extraction_rate",
+                lambda t, m, s, h: m.controller.face_max_extraction_rates[1].value,
             )
             self.telemetry.register_metric(
                 "face2_actual_rate",
                 lambda t, m, s, h: m.controller.face_actual_rates[1].value,
+            )
+            self.telemetry.register_metric(
+                "face2_effective_delay_factor",
+                lambda t, m, s, h: m.controller.face_effective_delay_factors[
+                    1
+                ].value,
             )
             self.telemetry.register_metric(
                 "fleet_shift_count",
@@ -339,9 +351,9 @@ class ActiveFleetConcentratorModel(BaseBlendingModel):
                 ),
             )
             self.telemetry.register_metric(
-                "mixed_capacity_extraction_rate",
+                "mixed_max_extraction_rate",
                 lambda t, m, s, h: sum(
-                    rate.value for rate in m.controller.face_capacity_rates
+                    rate.value for rate in m.controller.face_max_extraction_rates
                 ),
             )
             self.telemetry.register_metric(
